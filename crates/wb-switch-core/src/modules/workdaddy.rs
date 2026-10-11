@@ -64,8 +64,12 @@ pub const MAX_IMPORT_BYTES: usize = 8 * 1024 * 1024;
 /// Salsa20/8 core（RFC 7914 §3）。原地处理 64 字节。
 fn salsa20_8(block: &mut [u8; 64]) {
     let mut orig = [0u32; 16];
-    for (i, chunk) in block.chunks_exact(4).enumerate() {
-        orig[i] = u32::from_le_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]);
+    // 不用 `chunks_exact(4)`：新版 clippy 会拦「常量大小的 chunks_exact」，
+    // 而 `array_chunks` 在 `&mut [u8; N]` 上的方法解析又不通。直接按 4 字节步进，
+    // 既没有 lint 问题，也无需多想版本差异。
+    for (i, slot) in orig.iter_mut().enumerate() {
+        let at = i * 4;
+        *slot = u32::from_le_bytes([block[at], block[at + 1], block[at + 2], block[at + 3]]);
     }
     let mut x = orig;
     // 8 轮 = 4 个「列轮 + 行轮」。
