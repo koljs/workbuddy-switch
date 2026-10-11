@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCreditExpiry, getStatus } from "./api";
+import { getCreditExpiry, getStatus, runAutoSaveNow, setAutoSaveConfig } from "./api";
 
 /**
  * webui（浏览器）模式下的 HTTP 请求地址构造。
@@ -87,5 +87,34 @@ describe("webui httpCall URL 构造", () => {
       "message",
       "无法连接 workbuddy-switch 服务，请先运行 `workbuddy-switch`",
     );
+  });
+
+  /**
+   * 自动保存新号：锁住路由与请求体字段名。
+   *
+   * 字段名是跨层的硬契约——桌面端走 Tauri 命令参数（`{ enabled }`），webui 走
+   * 同名 JSON 字段；两边写歪一个字母，只有真机点开关时才会暴露。
+   */
+  it("自动保存开关走 /api/auto-save 且字段名是 enabled", async () => {
+    const fetchMock = stubFetch();
+
+    await setAutoSaveConfig(true);
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auto-save");
+    expect(init.method).toBe("POST");
+    expect(init.body).toBe(JSON.stringify({ enabled: true }));
+  });
+
+  it("立即扫描走 POST /api/auto-save/run，不带业务参数", async () => {
+    const fetchMock = stubFetch();
+
+    await runAutoSaveNow();
+
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe("/api/auto-save/run");
+    expect(init.method).toBe("POST");
+    // POST 一律带请求体（`httpCall` 对空参数序列化为 `{}`），服务端不读它。
+    expect(init.body).toBe(JSON.stringify({}));
   });
 });

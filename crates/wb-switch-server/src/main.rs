@@ -15,7 +15,8 @@ mod share_api;
 use serde_json::json;
 
 use wb_switch_core::modules::{
-    account, auth_file, checkin, config, process, rotate, share, travel, update, variant::WbVariant,
+    account, auth_file, auto_save, checkin, config, process, rotate, share, travel, update,
+    variant::WbVariant,
 };
 
 fn default_port() -> u16 {
@@ -23,9 +24,13 @@ fn default_port() -> u16 {
 }
 
 /// 后台任务：自动签到启动即核验，之后按 core 计算的下一轮延迟睡眠（未设置
-/// 签到时间段时固定 30 分钟）；自动轮换按配置间隔执行；
+/// 签到时间段时固定 30 分钟）；自动轮换按配置间隔执行；自动保存新号每 45 秒扫一次；
 /// 限额 hook 信号每秒轮询一次、启动时后台默认接入。
 fn spawn_background_loops() {
+    // 自动保存新号：登录态里出现账号库里没有的号就补进去（只增不改）。
+    // 独立 spawn，与其他循环互不阻塞。
+    tokio::spawn(auto_save::run_auto_save_cycle());
+
     tokio::spawn(async move {
         if let Err(error) = config::compact_checkin_logs() {
             eprintln!("[签到] 历史日志整理失败: {error}");

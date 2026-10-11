@@ -2093,6 +2093,105 @@ function RateLimitCard() {
 }
 
 /** 设置页：演示模式不渲染自动签到；Agent Companion 只在桌面正式版显示。 */
+/**
+ * 自动保存新号：单行开关 + 立即扫描。
+ *
+ * 不套手风琴——只有一个开关和一个按钮，展开区没有内容可放，多一层交互反而是负担。
+ */
+function AutoSaveCard() {
+  const [enabled, setEnabled] = useState(true);
+  const [loaded, setLoaded] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    api
+      .getAutoSaveConfig()
+      .then((cfg) => {
+        if (!alive) return;
+        setEnabled(cfg.enabled);
+        setLoaded(true);
+      })
+      .catch((e) => {
+        if (!alive) return;
+        setLoaded(true);
+        toast.error("自动保存配置加载失败", { description: api.asError(e) });
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const onToggle = async (next: boolean) => {
+    setEnabled(next); // 乐观更新，失败再回滚
+    setSaving(true);
+    try {
+      const res = await api.setAutoSaveConfig(next);
+      setEnabled(res.config.enabled);
+      toast.success(next ? "自动保存新号已开启" : "自动保存新号已关闭");
+    } catch (e) {
+      setEnabled(!next);
+      toast.error("自动保存设置保存失败", { description: api.asError(e) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const runNow = async () => {
+    setBusy(true);
+    try {
+      const res = await api.runAutoSaveNow();
+      const added = res.result.added ?? [];
+      if (added.length === 0) {
+        toast.info("没有发现新账号", {
+          description: "登录态里的账号都已经在账号库里了。",
+        });
+      } else {
+        toast.success(`已收进 ${added.length} 个新账号`, {
+          description: added.map((acc) => displayName(acc)).join("、"),
+          duration: 10_000,
+        });
+      }
+    } catch (e) {
+      toast.error("扫描失败", { description: api.asError(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <SettingsGroup id="settings-auto-save" title="自动保存新号">
+      <CardContent className="space-y-0 p-0">
+        <SettingsRow className="border-b-0">
+          <div className="min-w-0">
+            <div className="text-[13px] leading-5">自动收进新账号</div>
+            <div className="mt-0.5 text-xs leading-5 text-muted-foreground">
+              每 45 秒检查一次登录态：出现账号库里没有的号就自动收进来。只增不改——已有记录的
+              token、备注、代理都保留；想强制刷新已有记录，请用账号页的「导入本机账号」。
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <DemoAction>
+              <Switch
+                aria-label="自动保存新号"
+                checked={enabled}
+                disabled={!loaded || saving}
+                onCheckedChange={(v) => void onToggle(v)}
+              />
+            </DemoAction>
+            <DemoAction>
+              <Button size="sm" variant="outline" onClick={() => void runNow()} disabled={busy}>
+                {busy ? <Loader2 className="animate-spin" /> : <RefreshCw />}立即扫描
+              </Button>
+            </DemoAction>
+          </div>
+        </SettingsRow>
+      </CardContent>
+    </SettingsGroup>
+  );
+}
+
 export default function SettingsPage() {
   return (
     <div className="mx-auto min-w-0 w-full max-w-3xl px-4 py-6 sm:px-6 sm:py-8">
@@ -2108,6 +2207,7 @@ export default function SettingsPage() {
         <SupportedToolsCard />
         <PermissionCheckCard />
         {api.isDemoMode() ? null : <AutoCheckinCard />}
+        {api.isDemoMode() ? null : <AutoSaveCard />}
         <AutoRotateCard />
         <RateLimitCard />
         {api.isDesktop() && !api.isDemoMode() ? <CompanionCard /> : null}

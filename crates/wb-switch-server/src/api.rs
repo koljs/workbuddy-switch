@@ -18,7 +18,7 @@ use rust_embed::RustEmbed;
 use serde_json::{json, Value};
 
 use wb_switch_core::modules::{
-    account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
+    account, auth_file, auto_save, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, config, credit_usage, credits,
     export_import, jetbrains, limits, notifications, oauth, process, rate_limit_events,
     rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
@@ -121,6 +121,11 @@ pub fn router() -> Router {
         .route("/api/oauth/start", post(api_oauth_start))
         .route("/api/oauth/status", post(api_oauth_status))
         .route("/api/import-local", post(api_import_local))
+        .route(
+            "/api/auto-save",
+            get(api_auto_save_config).post(api_set_auto_save),
+        )
+        .route("/api/auto-save/run", post(api_auto_save_run))
         .route("/api/export-accounts", post(api_export_accounts))
         .route(
             "/api/export-accounts-to-path",
@@ -695,6 +700,30 @@ async fn api_import_local(body: Option<Json<Value>>) -> Response {
         Ok(acc) => json_ok(json!({ "ok": true, "account": acc })),
         Err(e) => json_err(e, StatusCode::BAD_REQUEST),
     }
+}
+
+/// GET /api/auto-save —— 读自动保存新号的开关。
+async fn api_auto_save_config() -> Response {
+    json_ok(auto_save::load_config())
+}
+
+/// POST /api/auto-save —— 写开关（body `{ "enabled": bool }`）。
+async fn api_set_auto_save(Json(body): Json<Value>) -> Response {
+    let Some(enabled) = body.get("enabled").and_then(|v| v.as_bool()) else {
+        return json_err("缺少 enabled（布尔）".to_string(), StatusCode::BAD_REQUEST);
+    };
+    match auto_save::set_enabled(enabled) {
+        Ok(config) => json_ok(json!({ "ok": true, "config": config })),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+/// POST /api/auto-save/run —— 立即扫一遍（不等 45 秒的循环）。
+///
+/// 返回 `{ scanned, added }`；`added` 为空是常态，前端据此决定要不要弹提示。
+/// 这条不受开关限制：用户主动点的「立即扫描」，就算开关是关的也该执行。
+async fn api_auto_save_run() -> Response {
+    json_ok(json!({ "ok": true, "result": auto_save::scan_once() }))
 }
 
 // ---------------------------------------------------------------------------

@@ -54,9 +54,13 @@ pub(crate) fn notify_codebuddy_cli_updated(app: &tauri::AppHandle) {
 }
 
 /// 后台循环：自动签到启动即核验，之后按 core 计算的下一轮延迟睡眠（未设置
-/// 签到时间段时固定 30 分钟）；自动轮换每 30 秒检查；每天一次保活；
-/// 限额 hook 信号每秒轮询一次（入账即通知前端）；限额 hook 启动时后台默认接入。
+/// 签到时间段时固定 30 分钟）；自动轮换每 30 秒检查；自动保存新号每 45 秒扫一次；
+/// 每天一次保活；限额 hook 信号每秒轮询一次（入账即通知前端）；限额 hook 启动时后台默认接入。
 fn spawn_background_loops(app: tauri::AppHandle) {
+    // 自动保存新号：登录态里出现账号库里没有的号就补进去（只增不改）。
+    // 独立 spawn，不与其他循环共享节奏。
+    tauri::async_runtime::spawn(modules::auto_save::run_auto_save_cycle());
+
     let rotate_app = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(error) = modules::config::compact_checkin_logs() {
@@ -311,6 +315,9 @@ pub fn run() {
             commands::create_share_package,
             commands::get_share_history,
             commands::import_share_package,
+            commands::get_auto_save_config,
+            commands::set_auto_save_config,
+            commands::run_auto_save_now,
             commands::log_error,
             commands::get_error_log_path,
             commands::reveal_error_log,

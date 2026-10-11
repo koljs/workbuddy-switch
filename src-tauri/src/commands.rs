@@ -8,7 +8,7 @@ use serde_json::{json, Value};
 
 use tauri::Emitter;
 use wb_switch_core::modules::{
-    account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
+    account, auth_file, auto_save, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, egress, error_log,
     export_import, gateway, jetbrains, limits, notifications, oauth, process, proxy,
     rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, share,
@@ -473,6 +473,26 @@ pub async fn oauth_status(login_id: String) -> Value {
 pub fn import_local(variant: Option<String>) -> Result<Value, String> {
     account::import_local(WbVariant::parse(variant.as_deref()))
         .map(|acc| json!({ "ok": true, "account": acc }))
+}
+
+/// GET /api/auto-save —— 读自动保存新号的开关。
+#[tauri::command]
+pub fn get_auto_save_config() -> Value {
+    auto_save::load_config()
+}
+
+/// POST /api/auto-save —— 写开关。
+#[tauri::command]
+pub fn set_auto_save_config(enabled: bool) -> Result<Value, String> {
+    auto_save::set_enabled(enabled).map(|config| json!({ "ok": true, "config": config }))
+}
+
+/// POST /api/auto-save/run —— 立即扫一遍，不等后台循环。
+///
+/// 不受开关限制：用户主动点「立即扫描」，就算开关关着也该执行。
+#[tauri::command]
+pub fn run_auto_save_now() -> Value {
+    json!({ "ok": true, "result": auto_save::scan_once() })
 }
 
 // ---------------------------------------------------------------------------

@@ -208,6 +208,9 @@ const ROUTES: Record<string, Route> = {
   create_share_package: { method: "POST", path: "/api/share" },
   get_share_history: { method: "GET", path: "/api/share/history" },
   import_share_package: { method: "POST", path: "/api/share/import" },
+  get_auto_save_config: { method: "GET", path: "/api/auto-save" },
+  set_auto_save_config: { method: "POST", path: "/api/auto-save" },
+  run_auto_save_now: { method: "POST", path: "/api/auto-save/run" },
 };
 
 /**
@@ -1397,4 +1400,35 @@ export function importSharePackage(
   doSwitch = false,
 ): Promise<{ uid: string; variant: string; switched: boolean }> {
   return call("import_share_package", { path, switch: doSwitch });
+}
+
+/** 自动保存新号：开关状态。 */
+export interface AutoSaveConfig {
+  enabled: boolean;
+}
+
+/** 一次扫描的结果。`added` 为空是常态——绝大多数轮次什么都没发生。 */
+export interface AutoSaveResult {
+  scanned: number;
+  added: AccountMeta[];
+}
+
+/** 读「自动保存新号」开关（缺省开启）。 */
+export function getAutoSaveConfig(): Promise<AutoSaveConfig> {
+  return call("get_auto_save_config");
+}
+
+/** 写「自动保存新号」开关。 */
+export function setAutoSaveConfig(enabled: boolean): Promise<{ config: AutoSaveConfig }> {
+  return call("set_auto_save_config", { enabled });
+}
+
+/**
+ * 立即扫一遍登录态，把账号库里还没有的号收进来。
+ *
+ * 不受开关限制：主动点「立即扫描」，开关关着也该执行。只增不改——已存在的
+ * uid 一个字段都不动（登录态里可能是加密信封 token，覆盖明文会让签到失效）。
+ */
+export function runAutoSaveNow(): Promise<{ result: AutoSaveResult }> {
+  return call("run_auto_save_now");
 }
