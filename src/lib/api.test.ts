@@ -1,6 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { getCreditExpiry, getStatus, runAutoSaveNow, setAutoSaveConfig } from "./api";
+import {
+  claimGrowthTasks,
+  getCreditExpiry,
+  getGrowthTasks,
+  getStatus,
+  runAutoSaveNow,
+  runDailyWelfare,
+  setAutoSaveConfig,
+} from "./api";
 
 /**
  * webui（浏览器）模式下的 HTTP 请求地址构造。
@@ -116,5 +124,25 @@ describe("webui httpCall URL 构造", () => {
     expect(init.method).toBe("POST");
     // POST 一律带请求体（`httpCall` 对空参数序列化为 `{}`），服务端不读它。
     expect(init.body).toBe(JSON.stringify({}));
+  });
+
+  it("成长任务与每日福利请求沿用 accountId JSON 契约", async () => {
+    const fetchMock = stubFetch();
+
+    await getGrowthTasks("account-1");
+    await claimGrowthTasks("account-1");
+    await runDailyWelfare("account-1");
+
+    const calls = fetchMock.mock.calls as unknown as [string, RequestInit][];
+    expect(calls.map(([url]) => url)).toEqual([
+      "/api/growth/tasks",
+      "/api/growth/claim",
+      "/api/welfare/run",
+    ]);
+    expect(calls.map(([, init]) => init.body)).toEqual([
+      JSON.stringify({ accountId: "account-1" }),
+      JSON.stringify({ accountId: "account-1" }),
+      JSON.stringify({ accountId: "account-1" }),
+    ]);
   });
 });

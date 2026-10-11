@@ -212,6 +212,9 @@ const ROUTES: Record<string, Route> = {
   get_auto_save_config: { method: "GET", path: "/api/auto-save" },
   set_auto_save_config: { method: "POST", path: "/api/auto-save" },
   run_auto_save_now: { method: "POST", path: "/api/auto-save/run" },
+  get_growth_tasks: { method: "POST", path: "/api/growth/tasks" },
+  claim_growth_tasks: { method: "POST", path: "/api/growth/claim" },
+  run_daily_welfare: { method: "POST", path: "/api/welfare/run" },
 };
 
 /**
@@ -1459,4 +1462,63 @@ export function setAutoSaveConfig(enabled: boolean): Promise<{ config: AutoSaveC
  */
 export function runAutoSaveNow(): Promise<{ result: AutoSaveResult }> {
   return call("run_auto_save_now");
+}
+
+export interface GrowthTask {
+  task_code: string;
+  title: string;
+  description: string;
+  current: number;
+  target: number;
+  credit: number;
+  energy: number;
+  claimable: boolean;
+  claimed: boolean;
+  locked: boolean;
+  accept_status: string;
+}
+
+export interface GrowthTasksResponse {
+  ok: boolean;
+  unsupported?: boolean;
+  message?: string;
+  tasks: GrowthTask[];
+}
+
+export interface GrowthClaimResult {
+  task_code: string;
+  title: string;
+  ok: boolean;
+  already_claimed: boolean;
+  credit: number;
+  energy: number;
+  message: string;
+}
+
+export interface GrowthClaimResponse {
+  ok: boolean;
+  unsupported?: boolean;
+  message?: string;
+  results: GrowthClaimResult[];
+  credit: number;
+  energy: number;
+}
+
+export interface WelfareStepResult {
+  step: string;
+  ok: boolean;
+  credit: number;
+  message: string;
+}
+
+export function getGrowthTasks(accountId: string): Promise<GrowthTasksResponse> {
+  return call("get_growth_tasks", { accountId });
+}
+
+export function claimGrowthTasks(accountId: string): Promise<GrowthClaimResponse> {
+  return call("claim_growth_tasks", { accountId });
+}
+
+export function runDailyWelfare(accountId: string): Promise<{ ok: boolean; results: WelfareStepResult[] }> {
+  return call("run_daily_welfare", { accountId });
 }

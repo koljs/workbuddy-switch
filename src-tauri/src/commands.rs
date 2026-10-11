@@ -10,10 +10,10 @@ use tauri::Emitter;
 use wb_switch_core::modules::{
     account, auth_file, auto_save, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, egress, error_log,
-    export_import, gateway, jetbrains, limits, notifications, oauth, process, proxy,
+    export_import, gateway, growth_tasks, jetbrains, limits, notifications, oauth, process, proxy,
     rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, share,
     switch, token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
-    vscode_session_sync, workdaddy,
+    vscode_session_sync, welfare, workdaddy,
 };
 
 #[derive(Serialize)]
@@ -493,6 +493,27 @@ pub fn set_auto_save_config(enabled: bool) -> Result<Value, String> {
 #[tauri::command]
 pub fn run_auto_save_now() -> Value {
     json!({ "ok": true, "result": auto_save::scan_once() })
+}
+
+/// 读取单账号成长任务进度（只读）。
+#[tauri::command]
+pub async fn get_growth_tasks(account_id: String) -> Result<Value, String> {
+    let acc = account::find_account(&account_id).ok_or_else(|| "账号不存在".to_string())?;
+    Ok(growth_tasks::list_tasks(&acc).await)
+}
+
+/// 领取单账号所有已真实达成的成长任务奖励。
+#[tauri::command]
+pub async fn claim_growth_tasks(account_id: String) -> Result<Value, String> {
+    let acc = account::find_account(&account_id).ok_or_else(|| "账号不存在".to_string())?;
+    Ok(growth_tasks::claim_ready_tasks(&acc).await)
+}
+
+/// 手动运行一次该账号的真实每日福利步骤。
+#[tauri::command]
+pub async fn run_daily_welfare(account_id: String) -> Result<Value, String> {
+    let acc = account::find_account(&account_id).ok_or_else(|| "账号不存在".to_string())?;
+    Ok(json!({ "ok": true, "results": welfare::run_welfare(&acc, None).await }))
 }
 
 /// POST /api/import-workdaddy —— 导入 WorkDaddy 加密导出。

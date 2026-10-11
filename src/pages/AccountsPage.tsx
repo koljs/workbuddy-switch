@@ -46,6 +46,7 @@ import {
 import { ExportAccountsDialog } from "@/components/export-accounts-dialog";
 import { ImportAccountsDialog } from "@/components/import-accounts-dialog";
 import { ImportWorkDaddyDialog } from "@/components/import-workdaddy-dialog";
+import { GrowthWelfareDialog } from "@/components/growth-welfare-dialog";
 import { OAuthLoginDialog } from "@/components/oauth-login-dialog";
 import { SwitchAccountDialog } from "@/components/switch-account-dialog";
 import { VscodeSwitchAccountDialog } from "@/components/vscode-switch-account-dialog";
@@ -190,6 +191,7 @@ export default function AccountsPage() {
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [workdaddyOpen, setWorkdaddyOpen] = useState(false);
+  const [growthWelfareAccount, setGrowthWelfareAccount] = useState<AccountMeta | null>(null);
   const [switchAccount, setSwitchAccount] = useState<AccountMeta | null>(null);
   /** 「账号信息」弹框目标账号（查看信息 / 编辑备注 / 选择显示字段）。 */
   const [infoTarget, setInfoTarget] = useState<AccountMeta | null>(null);
@@ -1166,6 +1168,7 @@ export default function AccountsPage() {
                 onShowInfo={setInfoTarget}
                 onEditProxy={setProxyTarget}
                 onShare={handleShare}
+                onGrowthRewards={setGrowthWelfareAccount}
                 onCheckin={checkinAvailable ? onCheckin : undefined}
                 onRefresh={onRefresh}
                 todayCheckedIn={checkinMap[a.id]}
@@ -1223,6 +1226,11 @@ export default function AccountsPage() {
         open={workdaddyOpen}
         onOpenChange={setWorkdaddyOpen}
         onImported={onWorkDaddyImported}
+      />
+      <GrowthWelfareDialog
+        open={growthWelfareAccount !== null}
+        onOpenChange={(open) => !open && setGrowthWelfareAccount(null)}
+        account={growthWelfareAccount}
       />
       <SwitchAccountDialog
         open={switchAccount !== null}

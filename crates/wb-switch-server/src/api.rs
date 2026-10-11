@@ -20,9 +20,10 @@ use serde_json::{json, Value};
 use wb_switch_core::modules::{
     account, auth_file, auto_save, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, config, credit_usage, credits,
-    export_import, jetbrains, limits, notifications, oauth, process, rate_limit_events,
-    rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
-    variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync, workdaddy,
+    export_import, growth_tasks, jetbrains, limits, notifications, oauth, process,
+    rate_limit_events, rate_limit_hook, refresh, rotate, session, session_groups, switch,
+    token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
+    vscode_session_sync, welfare, workdaddy,
 };
 
 /// WorkBuddy 运行状态缓存：Windows 上检测要跑 tasklist（慢），缓存几秒避免
@@ -126,6 +127,9 @@ pub fn router() -> Router {
             get(api_auto_save_config).post(api_set_auto_save),
         )
         .route("/api/auto-save/run", post(api_auto_save_run))
+        .route("/api/growth/tasks", post(api_growth_tasks))
+        .route("/api/growth/claim", post(api_growth_claim))
+        .route("/api/welfare/run", post(api_welfare_run))
         .route("/api/export-accounts", post(api_export_accounts))
         .route(
             "/api/export-accounts-to-path",
@@ -725,6 +729,45 @@ async fn api_set_auto_save(Json(body): Json<Value>) -> Response {
 /// 这条不受开关限制：用户主动点的「立即扫描」，就算开关是关的也该执行。
 async fn api_auto_save_run() -> Response {
     json_ok(json!({ "ok": true, "result": auto_save::scan_once() }))
+}
+
+/// POST /api/growth/tasks —— 读取单账号成长任务（只读）。
+async fn api_growth_tasks(Json(body): Json<Value>) -> Response {
+    let account_id = body
+        .get("accountId")
+        .or_else(|| body.get("account_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let Some(acc) = account::find_account(account_id) else {
+        return json_err("账号不存在".to_string(), StatusCode::NOT_FOUND);
+    };
+    json_ok(growth_tasks::list_tasks(&acc).await)
+}
+
+/// POST /api/growth/claim —— 只领取服务端已判定真实达成的任务奖励。
+async fn api_growth_claim(Json(body): Json<Value>) -> Response {
+    let account_id = body
+        .get("accountId")
+        .or_else(|| body.get("account_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let Some(acc) = account::find_account(account_id) else {
+        return json_err("账号不存在".to_string(), StatusCode::NOT_FOUND);
+    };
+    json_ok(growth_tasks::claim_ready_tasks(&acc).await)
+}
+
+/// POST /api/welfare/run —— 手动运行一次真实每日福利步骤。
+async fn api_welfare_run(Json(body): Json<Value>) -> Response {
+    let account_id = body
+        .get("accountId")
+        .or_else(|| body.get("account_id"))
+        .and_then(Value::as_str)
+        .unwrap_or("");
+    let Some(acc) = account::find_account(account_id) else {
+        return json_err("账号不存在".to_string(), StatusCode::NOT_FOUND);
+    };
+    json_ok(json!({ "ok": true, "results": welfare::run_welfare(&acc, None).await }))
 }
 
 // ---------------------------------------------------------------------------

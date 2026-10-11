@@ -14,6 +14,7 @@ pub mod egress;
 pub mod error_log;
 pub mod export_import;
 pub mod gateway;
+pub mod growth_tasks;
 pub mod jetbrains;
 pub mod limits;
 #[cfg(target_os = "linux")]
@@ -43,4 +44,5 @@ pub mod vscode_ext;
 pub mod vscode_session;
 pub mod vscode_session_link;
 pub mod vscode_session_sync;
+pub mod welfare;
 pub mod workdaddy;
