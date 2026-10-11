@@ -8,6 +8,7 @@
 //! ```
 
 mod api;
+mod gateway_api;
 
 use serde_json::json;
 

@@ -11,6 +11,7 @@ pub mod credit_usage;
 pub mod credits;
 pub mod error_log;
 pub mod export_import;
+pub mod gateway;
 pub mod jetbrains;
 pub mod limits;
 #[cfg(target_os = "linux")]
@@ -22,6 +23,7 @@ pub mod process;
 pub mod rate_limit_events;
 pub mod rate_limit_hook;
 pub mod refresh;
+pub mod risk;
 pub mod rotate;
 pub mod session;
 pub mod session_backup;

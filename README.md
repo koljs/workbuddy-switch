@@ -42,6 +42,8 @@ xattr -rd com.apple.quarantine "/Applications/workbuddy-switch.app"
 | 积分到期查询 | 自动查询每个账号的积分剩余量与到期时间；7 天内到期高亮，并按紧迫程度排序、标注「建议优先使用」 |
 | 积分统计 | 汇总官方请求用量：总览、近 30 天趋势、模型分类、账号消耗与请求明细 |
 | Token 统计 | 按来源查看 Token 总览与趋势，含构成占比、活跃热力图、项目/模型 Top 10 与会话排行 |
+| OpenAI 兼容网关 | 把账号库变成一个标准 OpenAI 接口（`/v1` 与 `/v1-global`），多账号自动轮转、失败换号重试、每日上限与用量统计 |
+| 风控体检 | 给每个账号真发一条最小对话，判定可用 / 风控拦截 / 登录态失效 / 网络问题，结论写回账号库并让网关避开被风控的号 |
 | CodeBuddy CLI | 与 WorkBuddy 复用同一账号库，默认账号独立；切换后立即生效，无需重启 CLI |
 | CodeBuddy IDE | 支持切换 CodeBuddy IDE 桌面客户端账号，并可在弹窗中勾选复制会话，与 CodeBuddy CLI 相互独立 |
 | VS Code CodeBuddy 插件 | 支持切换 VS Code 内的 CodeBuddy 插件账号；VS Code 运行时可自动关闭并在写入后重新打开 |
@@ -65,6 +67,18 @@ xattr -rd com.apple.quarantine "/Applications/workbuddy-switch.app"
 ✅ 表示支持，— 表示不支持。设置 →「支持工具」可按客户端逐个开启 / 关闭入口；关闭后该端入口与状态轮询一并隐藏，不影响账号库与其它端；JetBrains 端默认关闭，可在设置中随时打开。
 
 CodeBuddy CLI 切换时会先关闭正在运行的 CLI，当前会话会中断且不会自动重开；其余各端可在客户端运行时自动完成切换。
+
+### OpenAI 兼容网关
+
+把账号库变成一个标准 OpenAI 接口，Cherry Studio、ChatBox、Cline、Continue、Dify 以及各类
+OpenAI SDK 填上地址与密钥即可直接用；请求按「最久没用过的号优先」自动换号，某个号撞限额或
+掉线时自动切下一个号重试。
+
+国内版与国际版是**两套完全独立的网关**（路径 `/v1` 与 `/v1-global`，密钥、号池、每日上限、
+用量各算各的）。配套的**风控体检**会真发一条最小对话，判定每个账号当前是否还能用，并让网关
+自动避开刚被判为风控的号。
+
+详见 [docs/GATEWAY.md](docs/GATEWAY.md)。
 
 ### 会话悬浮窗（Agent Companion）
 

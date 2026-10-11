@@ -192,6 +192,12 @@ const ROUTES: Record<string, Route> = {
   save_github_config: { method: "POST", path: "/api/update/config" },
   check_update: { method: "GET", path: "/api/update/check" },
   switch_progress: { method: "GET", path: "/api/switch/progress" },
+  // OpenAI 兼容网关 + 风控体检（桌面端与 webui 共用同一份 core 实现）。
+  get_gateway_snapshot: { method: "GET", path: "/api/gateway" },
+  save_gateway_config: { method: "POST", path: "/api/gateway/config" },
+  clear_gateway_usage: { method: "POST", path: "/api/gateway/usage/clear" },
+  fetch_gateway_models: { method: "GET", path: "/api/gateway/models" },
+  check_account_risk: { method: "POST", path: "/api/risk/check" },
 };
 
 /**
@@ -1134,4 +1140,102 @@ export function getErrorLogPath(): Promise<string> {
 export function revealErrorLog(): Promise<void> {
   if (demoModeEnabled || isWebui()) return Promise.resolve();
   return call<unknown>("reveal_error_log").then(() => undefined);
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI 兼容网关 + 风控体检
+// ---------------------------------------------------------------------------
+
+export type GatewayRealm = "cn" | "global";
+
+/** 单个档位的网关快照。国内版与国际版是两套完全独立的网关。 */
+export interface GatewayRealmSnapshot {
+  realm: GatewayRealm;
+  label: string;
+  enabled: boolean;
+  /** 该档位专属密钥（与另一档位不通用）。 */
+  key: string;
+  /** 接口路径：`/v1` 或 `/v1-global`；完整地址由调用方拼 `location.origin`。 */
+  path: string;
+  /** 0 = 不限。 */
+  dailyLimit: number;
+  today: number;
+  total: number;
+  tokens: number;
+  failures: number;
+  /** 参与轮转的账号 id；空数组 = 该档位全部账号。 */
+  pool: string[];
+  accountCount: number;
+  /** 当前处于冷却中的账号数。 */
+  cooling: number;
+}
+
+export interface GatewaySnapshot {
+  gatewayVersion: string;
+  cn: GatewayRealmSnapshot;
+  global: GatewayRealmSnapshot;
+}
+
+export interface GatewayModel {
+  id: string;
+  object: string;
+  owned_by: string;
+  reasoning?: boolean;
+  supported_efforts?: string[];
+}
+
+export interface GatewayModelsPayload {
+  object: string;
+  data: GatewayModel[];
+}
+
+export type RiskState = "ok" | "risk" | "auth" | "network" | "other";
+
+export interface RiskRow {
+  id: string;
+  name: string;
+  uid: string;
+  realm: GatewayRealm;
+  state: RiskState;
+  label: string;
+  upstreamCode: number | null;
+  message: string;
+  checkedAt: string;
+}
+
+export interface RiskReport {
+  total: number;
+  counts: Record<RiskState, number>;
+  rows: RiskRow[];
+  checkedAt: string;
+}
+
+/** 两个档位的网关快照。 */
+export function getGatewaySnapshot(): Promise<GatewaySnapshot> {
+  return call("get_gateway_snapshot");
+}
+
+/** 保存某个档位的网关配置；未给的字段保持不变，`key` 传空串表示重新生成。 */
+export function saveGatewayConfig(
+  realm: GatewayRealm,
+  patch: Partial<Pick<GatewayRealmSnapshot, "enabled" | "key" | "dailyLimit" | "pool">>,
+): Promise<GatewaySnapshot> {
+  return call("save_gateway_config", { realm, patch });
+}
+
+/** 只清该档位的用量统计，不影响另一个版本。 */
+export function clearGatewayUsage(realm: GatewayRealm): Promise<GatewaySnapshot> {
+  return call("clear_gateway_usage", { realm });
+}
+
+/** 预览该档位可用模型（走号池里的第一个号）。 */
+export function fetchGatewayModels(
+  realm: GatewayRealm,
+): Promise<GatewayModelsPayload | { error: string }> {
+  return call("fetch_gateway_models", { realm });
+}
+
+/** 风控体检：给每个账号真发一条最小对话。`realm` 缺省 = 两个档位都跑。 */
+export function checkAccountRisk(realm?: GatewayRealm | "all"): Promise<RiskReport> {
+  return call("check_account_risk", realm ? { realm } : {});
 }

@@ -223,6 +223,8 @@ pub fn router() -> Router {
             "/api/update/config",
             get(api_update_config).post(api_save_update_config),
         )
+        // OpenAI 兼容网关 + 风控体检：独立模块，见 gateway_api.rs。
+        .merge(crate::gateway_api::router())
         .fallback(static_handler)
 }
 

@@ -10,9 +10,9 @@ use tauri::Emitter;
 use wb_switch_core::modules::{
     account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, error_log,
-    export_import, jetbrains, limits, notifications, oauth, process, rate_limit_events,
-    rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
-    variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync,
+    export_import, gateway, jetbrains, limits, notifications, oauth, process, rate_limit_events,
+    rate_limit_hook, refresh, risk, rotate, session, session_groups, switch, token_stats, travel,
+    update, variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync,
 };
 
 #[derive(Serialize)]
@@ -1465,4 +1465,62 @@ pub async fn list_notifications() -> Result<Value, String> {
 #[tauri::command]
 pub async fn clear_notifications() -> Result<(), String> {
     notifications::clear()
+}
+
+// ---------------------------------------------------------------------------
+// OpenAI 兼容网关 + 风控体检
+//
+// 对应 gateway_api.rs 里的 /api/gateway* 与 /api/risk/check；
+// 桌面端走这里，webui 走 HTTP 路由，两边共用 wb-switch-core 的同一份实现。
+// ---------------------------------------------------------------------------
+
+/// GET /api/gateway —— 两个档位的网关快照（含密钥、用量、号池、冷却数）。
+#[tauri::command]
+pub fn get_gateway_snapshot() -> Value {
+    gateway::payload()
+}
+
+/// POST /api/gateway/config —— 保存某个档位的网关配置。
+///
+/// `patch` 里未出现的字段保持不变；`key` 传空串或 `regenerate` 表示换一把新的。
+#[tauri::command]
+pub fn save_gateway_config(realm: Option<String>, patch: Value) -> Value {
+    let variant = gateway::gw_realm(realm.as_deref());
+    gateway::update_config(variant, &patch);
+    gateway::payload()
+}
+
+/// POST /api/gateway/usage/clear —— 只清该档位的用量统计。
+#[tauri::command]
+pub fn clear_gateway_usage(realm: Option<String>) -> Value {
+    let variant = gateway::gw_realm(realm.as_deref());
+    gateway::clear_usage(variant);
+    gateway::payload()
+}
+
+/// GET /api/gateway/models —— 预览该档位可用模型（走号池里的第一个号）。
+#[tauri::command]
+pub async fn fetch_gateway_models(realm: Option<String>) -> Value {
+    let variant = gateway::gw_realm(realm.as_deref());
+    let Some(account) = gateway::entries(variant).into_iter().next() else {
+        return json!({
+            "error": format!(
+                "没有可用的{}账号（先在账号页保存一个）",
+                gateway::realm_label(variant)
+            )
+        });
+    };
+    match gateway::fetch_models(&account).await {
+        Ok(models) => {
+            let list = models.as_array().cloned().unwrap_or_default();
+            gateway::models_payload(&list)
+        }
+        Err(error) => json!({ "error": error.message }),
+    }
+}
+
+/// POST /api/risk/check —— 风控体检。`realm` 缺省 = 两个档位都跑。
+#[tauri::command]
+pub async fn check_account_risk(realm: Option<String>) -> Value {
+    risk::check_all(realm.as_deref()).await
 }
