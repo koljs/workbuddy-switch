@@ -903,9 +903,18 @@ fn format_checkin_tooltip(value: &Value) -> String {
 mod tests {
     use super::{
         format_checkin_tooltip, is_silent_startup, should_activate_on_second_launch,
-        should_keep_tray_alive, should_wake_main_window, tray_icon, tray_icon_variant, MouseButton,
+        should_keep_tray_alive, should_wake_main_window, tray_icon_variant, MouseButton,
         MouseButtonState, TrayIconVariant,
     };
+    // 下面两个只在特定平台被测试引用，导入必须跟着平台走：
+    // 无条件导入会在另一侧触发 `unused_imports`，而 CI 的 clippy 带 `-D warnings`。
+    // `tray_icon()` 只有 macOS / 其它平台的测试在用（Windows 侧由 `tray_icon_variant` 挑素材）。
+    #[cfg(not(windows))]
+    use super::tray_icon;
+    // Windows 真机自检用。**必须显式导入**：`mod tests` 不会继承父模块的名字，
+    // 漏了它会让 `cargo test -p wb-switch-rust` 在 Windows 上以 E0425 编译失败。
+    #[cfg(windows)]
+    use super::taskbar_uses_light_theme;
     use serde_json::json;
 
     #[test]
