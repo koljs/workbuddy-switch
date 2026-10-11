@@ -180,13 +180,17 @@ fn v1_unknown(variant: WbVariant) -> Response {
 }
 
 /// 网关未启用 / 密钥不对这类前置校验。
+///
+/// `Err` 里装的是 `Box<Response>`：`Response` 本体 100+ 字节，直接塞进 `Result`
+/// 会让每个 `Ok` 路径都跟着搬这么大一块（clippy `result_large_err`）。失败路径
+/// 本来就走不了几次，多一次堆分配毫无代价。
 fn gate_or_error(
     variant: WbVariant,
     headers: &HeaderMap,
-) -> Result<gateway::RealmConfig, Response> {
+) -> Result<gateway::RealmConfig, Box<Response>> {
     let cfg = gateway::realm_config(variant);
     if !cfg.enabled {
-        return Err(openai_json(
+        return Err(Box::new(openai_json(
             503,
             gateway::openai_error(
                 &format!(
@@ -198,13 +202,13 @@ fn gate_or_error(
                 "service_unavailable",
                 None,
             ),
-        ));
+        )));
     }
     let auth = headers
         .get(header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok());
     if !gateway::check_auth(auth, &cfg.key) {
-        return Err(openai_json(
+        return Err(Box::new(openai_json(
             401,
             gateway::openai_error(
                 "API Key 不正确（注意：国内版和国际版是两把不同的密钥）",
@@ -213,14 +217,14 @@ fn gate_or_error(
                 "authentication_error",
                 None,
             ),
-        ));
+        )));
     }
     Ok(cfg)
 }
 
 async fn v1_models(headers: HeaderMap, variant: WbVariant) -> Response {
     if let Err(response) = gate_or_error(variant, &headers) {
-        return response;
+        return *response;
     }
     let Some(account) = gateway::entries(variant).into_iter().next() else {
         return openai_json(
@@ -250,7 +254,7 @@ async fn v1_models(headers: HeaderMap, variant: WbVariant) -> Response {
 async fn v1_chat(headers: HeaderMap, body: Value, variant: WbVariant) -> Response {
     let cfg = match gate_or_error(variant, &headers) {
         Ok(cfg) => cfg,
-        Err(response) => return response,
+        Err(response) => return *response,
     };
 
     if cfg.daily_limit > 0 && gateway::today_count(variant) >= cfg.daily_limit {

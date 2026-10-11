@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use std::sync::{Mutex, OnceLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::modules::account::{get_str, load_accounts, variant_of};
+use crate::modules::account::{account_proxy, get_str, load_accounts, variant_of};
 use crate::modules::config::{http_request_raw, now_ms, store_dir};
 use crate::modules::refresh::ensure_fresh_token;
 use crate::modules::variant::WbVariant;
@@ -732,12 +732,13 @@ pub async fn fetch_models(account: &Value) -> Result<Value, GatewayError> {
     let mut headers = common_headers(&refreshed);
     headers.insert("Authorization".to_string(), format!("Bearer {token}"));
     headers.insert("Accept".to_string(), "application/json".to_string());
+    let proxy = account_proxy(&refreshed);
 
     let mut last_error: Option<GatewayError> = None;
     for path in MODEL_LIST_PATHS {
         let url = format!("{chat_base}{path}");
         let (status, _, text) =
-            http_request_raw(&url, "GET", None, Some(&headers), None, true).await;
+            http_request_raw(&url, "GET", None, Some(&headers), proxy.as_deref(), true).await;
         if status == 404 || status == 405 {
             continue;
         }
@@ -995,6 +996,10 @@ fn normalize_reasoning_effort(body: &mut serde_json::Map<String, Value>) {
 // ---------------------------------------------------------------------------
 
 /// 打开上游流（这里一次性读回全文，交由 SSE 解析层切帧）。
+///
+/// 出口走账号自己的代理（[`account_proxy`]）：网关是「一个号池对外服务」的形态，
+/// 号池里的号可能来自不同出口，只有按号取代理才能把「一号一 IP」落到实处。没配
+/// 代理的号就是直连，行为与加这个参数之前完全一致。
 pub async fn open_chat(
     account: &Value,
     body: &Value,
@@ -1006,13 +1011,21 @@ pub async fn open_chat(
     let (chat_base, _, _) = bases(variant);
     let headers = chat_headers(account, conversation_id, request_id);
     let payload = serde_json::to_string(body).unwrap_or_else(|_| "{}".to_string());
+    let proxy = account_proxy(account);
 
     let mut last_error: Option<GatewayError> = None;
     for path in chat_paths(variant) {
         let url = format!("{chat_base}{path}");
         let body_value: Value = serde_json::from_str(&payload).unwrap_or(Value::Null);
-        let (status, _, text) =
-            http_request_raw(&url, "POST", Some(body_value), Some(&headers), None, true).await;
+        let (status, _, text) = http_request_raw(
+            &url,
+            "POST",
+            Some(body_value),
+            Some(&headers),
+            proxy.as_deref(),
+            true,
+        )
+        .await;
         if status == 404 || status == 405 {
             continue;
         }
