@@ -28,7 +28,11 @@ pub fn workbuddy_app_path(variant: WbVariant) -> PathBuf {
         if let Some(exe) = crate::modules::process::windows_workbuddy_exe_path(variant) {
             return exe;
         }
-        return crate::modules::process::windows_default_app_path(variant);
+        // 末尾不写 `return`：这个 `#[cfg(windows)]` 块在 Windows 上就是函数体的
+        // 尾表达式（后面的 `#[cfg(not(any(macos, windows)))]` 分支会被剥掉）。
+        // 写了反而触发 `clippy::needless_return`，而 CI 的 lint job 跑在 macOS 上，
+        // 永远看不到这里。
+        crate::modules::process::windows_default_app_path(variant)
     }
 
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]

@@ -192,6 +192,26 @@ export default function AccountsPage() {
   const [infoTarget, setInfoTarget] = useState<AccountMeta | null>(null);
   /** 「出口代理」弹框目标；与 infoTarget 分开，避免两个弹框互相顶掉。 */
   const [proxyTarget, setProxyTarget] = useState<AccountMeta | null>(null);
+
+  /**
+   * 生成「双击即登录」分享包。
+   *
+   * 包体只落在本机 `<数据目录>/分享包/` 下，**不经过网络**——包里是账号凭证，
+   * 发给谁、走哪条通道由用户自己决定，工具不替他上传。
+   */
+  const handleShare = async (account: AccountMeta) => {
+    const toastId = toast.loading("正在生成分享包…");
+    try {
+      const pkg = await api.createSharePackage(account.id);
+      toast.success("分享包已生成", {
+        id: toastId,
+        description: `${pkg.file} 已保存到 ${pkg.path}`,
+        duration: 12000,
+      });
+    } catch (e) {
+      toast.error("生成分享包失败", { id: toastId, description: api.asError(e) });
+    }
+  };
   /**
    * 自动签到配置（只读）：只用于决定账号卡片是否展示「自动签到已关闭」chip，
    * 以及状态查询、刷新时跳过哪些账号。控制入口在设置页。
@@ -1103,6 +1123,7 @@ export default function AccountsPage() {
                 onSwitch={setSwitchAccount}
                 onShowInfo={setInfoTarget}
                 onEditProxy={setProxyTarget}
+                onShare={handleShare}
                 onCheckin={checkinAvailable ? onCheckin : undefined}
                 onRefresh={onRefresh}
                 todayCheckedIn={checkinMap[a.id]}

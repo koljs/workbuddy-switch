@@ -375,11 +375,13 @@ fn list_codebuddy_cli_pids() -> Vec<u32> {
         let Some(stdout) = process::ps_output(script, 5) else {
             return Vec::new();
         };
-        return stdout
+        // 同上：这是 Windows 分支的尾表达式，不写 `return` 才不会触发
+        // `clippy::needless_return`（macOS 上的 lint job 看不到）。
+        stdout
             .lines()
             .filter_map(|line| line.trim().parse::<u32>().ok())
             .filter(|pid| *pid != self_pid)
-            .collect();
+            .collect()
     }
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     {

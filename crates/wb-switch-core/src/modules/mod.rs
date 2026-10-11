@@ -31,6 +31,7 @@ pub mod session;
 pub mod session_backup;
 pub mod session_groups;
 pub mod session_link;
+pub mod share;
 pub mod switch;
 pub mod token_stats;
 pub mod travel;

@@ -443,7 +443,7 @@ fn get_local_state_path(data_root: &Path) -> Result<PathBuf, String> {
 #[cfg(target_os = "windows")]
 fn dpapi_decrypt(encrypted: &[u8]) -> Result<Vec<u8>, String> {
     unsafe {
-        let mut data_in = CRYPT_INTEGER_BLOB {
+        let data_in = CRYPT_INTEGER_BLOB {
             cbData: encrypted.len() as u32,
             pbData: encrypted.as_ptr() as *mut u8,
         };
@@ -451,7 +451,9 @@ fn dpapi_decrypt(encrypted: &[u8]) -> Result<Vec<u8>, String> {
             cbData: 0,
             pbData: std::ptr::null_mut(),
         };
-        CryptUnprotectData(&mut data_in, None, None, None, None, 0, &mut data_out)
+        // Win32 的 `CryptUnprotectData` 把入参声明成 `*const CRYPT_INTEGER_BLOB`，
+        // 传 `&mut` 会触发 `clippy::unnecessary_mut_passed`。
+        CryptUnprotectData(&data_in, None, None, None, None, 0, &mut data_out)
             .map_err(|e| format!("DPAPI CryptUnprotectData failed: {e}"))?;
         if data_out.pbData.is_null() || data_out.cbData == 0 {
             return Err("DPAPI returned empty data".to_string());
@@ -529,7 +531,9 @@ fn decrypt_secret_payload(
     {
         let _ = target;
         let key = get_windows_encryption_key(data_root)?;
-        return decrypt_windows_gcm_v10(&key, encrypted);
+        // Windows 分支即尾表达式，不写 `return`（否则 macOS lint job 之外的
+        // `needless_return` 只会在 Windows 上炸出来）。
+        decrypt_windows_gcm_v10(&key, encrypted)
     }
     #[cfg(target_os = "macos")]
     {
@@ -577,7 +581,7 @@ fn encrypt_secret_payload(
     {
         let _ = (preferred_prefix, target);
         let key = get_windows_encryption_key(data_root)?;
-        return encrypt_windows_gcm_v10(&key, plaintext);
+        encrypt_windows_gcm_v10(&key, plaintext)
     }
     #[cfg(target_os = "macos")]
     {

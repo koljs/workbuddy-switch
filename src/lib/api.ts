@@ -204,6 +204,10 @@ const ROUTES: Record<string, Route> = {
   assign_egress: { method: "POST", path: "/api/egress/assign" },
   test_account_proxy: { method: "POST", path: "/api/proxy/test" },
   save_account_proxy: { method: "POST", path: "/api/account-proxy" },
+  // 分享包（双击即登录）：生成 / 历史 / 导入。
+  create_share_package: { method: "POST", path: "/api/share" },
+  get_share_history: { method: "GET", path: "/api/share/history" },
+  import_share_package: { method: "POST", path: "/api/share/import" },
 };
 
 /**
@@ -1359,4 +1363,38 @@ export function saveAccountProxy(
   proxyUrl: string,
 ): Promise<{ id: string; proxy: string; masked: string }> {
   return call("save_account_proxy", { id, proxyUrl });
+}
+
+/** 分享包元数据（落盘位置 + 账号信息）。 */
+export interface SharePackageMeta {
+  file: string;
+  path: string;
+  account_id: string;
+  account_name: string;
+  uid: string;
+  bytes: number;
+  created_at: string;
+}
+
+/**
+ * 生成「双击即登录」分享包。
+ *
+ * 包体写在 `<数据目录>/分享包/` 下，**不经过网络**——分享的是账号凭证，别让它
+ * 出现在任何在线通道里。
+ */
+export function createSharePackage(id: string): Promise<SharePackageMeta> {
+  return call("create_share_package", { id });
+}
+
+/** 分享历史（最近在前）与分享包所在目录。 */
+export function getShareHistory(): Promise<{ history: SharePackageMeta[]; dir: string }> {
+  return call("get_share_history");
+}
+
+/** 导入分享包（解压后的目录或 zip 本身）。`doSwitch` 为真时顺带切到该账号。 */
+export function importSharePackage(
+  path: string,
+  doSwitch = false,
+): Promise<{ uid: string; variant: string; switched: boolean }> {
+  return call("import_share_package", { path, switch: doSwitch });
 }

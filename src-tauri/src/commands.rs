@@ -11,8 +11,8 @@ use wb_switch_core::modules::{
     account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
     codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, egress, error_log,
     export_import, gateway, jetbrains, limits, notifications, oauth, process, proxy,
-    rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, switch,
-    token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
+    rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, share,
+    switch, token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
     vscode_session_sync,
 };
 
@@ -1588,4 +1588,32 @@ pub fn save_account_proxy(id: String, proxy_url: String) -> Result<Value, String
         "proxy": normalized.clone().unwrap_or_default(),
         "masked": normalized.as_deref().map(proxy::mask).unwrap_or_default(),
     }))
+}
+
+// ---------------------------------------------------------------------------
+// 分享包（双击即登录）
+//
+// 对应 share_api.rs 里的 /api/share*；桌面端走这里，webui 走 HTTP 路由，
+// 两边共用 wb-switch-core 的同一份实现。
+// ---------------------------------------------------------------------------
+
+/// POST /api/share —— 生成分享包，返回包的文件名/路径/大小/账号信息。
+#[tauri::command]
+pub fn create_share_package(id: String) -> Result<Value, String> {
+    share::build_package(id.trim(), None)
+}
+
+/// GET /api/share/history —— 分享历史（最近在前）与分享包目录。
+#[tauri::command]
+pub fn get_share_history() -> Value {
+    json!({
+        "history": share::load_history(),
+        "dir": share::share_dir().to_string_lossy(),
+    })
+}
+
+/// POST /api/share/import —— 导入分享包（解压后的目录或 zip 本身）。
+#[tauri::command]
+pub fn import_share_package(path: String, switch: Option<bool>) -> Result<Value, String> {
+    share::import_package(std::path::Path::new(path.trim()), switch.unwrap_or(false))
 }

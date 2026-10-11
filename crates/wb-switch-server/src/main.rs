@@ -4,16 +4,18 @@
 //! workbuddy-switch              # 启动本地服务 + 打开浏览器 webui
 //! workbuddy-switch serve        # 只起服务不开浏览器（--port / --no-open）
 //! workbuddy-switch status       # 终端输出当前账号
+//! workbuddy-switch import-share # 导入「分享包」（双击即登录的 .bat 调的就是它）
 //! workbuddy-switch version      # 版本号
 //! ```
 
 mod api;
 mod gateway_api;
+mod share_api;
 
 use serde_json::json;
 
 use wb_switch_core::modules::{
-    account, auth_file, checkin, config, process, rotate, travel, update, variant::WbVariant,
+    account, auth_file, checkin, config, process, rotate, share, travel, update, variant::WbVariant,
 };
 
 fn default_port() -> u16 {
@@ -133,10 +135,60 @@ async fn main() {
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("serve");
     match cmd {
         "status" => print_status(variant_arg(&args)),
+        "import-share" => std::process::exit(import_share(&args)),
         "version" | "--version" | "-V" => {
             println!("workbuddy-switch {}", env!("CARGO_PKG_VERSION"));
         }
         _ => serve(&args).await,
+    }
+}
+
+/// `workbuddy-switch import-share <分享包目录|zip> [--switch]`
+///
+/// 分享包里的 `Windows电脑点这个登录.bat` 就是调这条命令：把包内账号写进本机
+/// WorkBuddy 的 auth 文件并（可选）切换过去。
+///
+/// 退出码必须如实反映成败——`.bat` 是靠 `%ERRORLEVEL%` 判断并打印「已完成 / 执行失败」
+/// 的，这里吞掉错误会让对方看到「已完成」却什么都没发生。
+fn import_share(args: &[String]) -> i32 {
+    // 锚在子命令名上，而不是写死 `skip(2)`：`main` 传的是完整 argv（`args[0]` 是程序名，
+    // 子命令在 `args[1]`），而本文件的测试按惯例只传「从子命令开始」的切片。
+    // 写死下标会让后者把目标路径当成子命令吃掉，于是「路径不存在」被误报成「参数用错」。
+    let target = args
+        .iter()
+        .skip_while(|arg| arg.as_str() != "import-share")
+        .skip(1)
+        .find(|arg| !arg.starts_with("--"))
+        .cloned();
+    let Some(target) = target else {
+        eprintln!("用法：workbuddy-switch import-share <分享包目录|zip> [--switch]");
+        return 2;
+    };
+    let switch = args.iter().any(|arg| arg == "--switch");
+    match share::import_package(std::path::Path::new(&target), switch) {
+        Ok(result) => {
+            let uid = result.get("uid").and_then(|v| v.as_str()).unwrap_or("");
+            let name = result
+                .get("account")
+                .and_then(|meta| meta.get("nickname").or_else(|| meta.get("email")))
+                .and_then(|v| v.as_str())
+                .unwrap_or("未知");
+            println!("[WorkBuddy] 已导入账号：{name}（uid {uid}）");
+            if result.get("switched").and_then(|v| v.as_bool()) == Some(true) {
+                println!("[WorkBuddy] 已切换到该账号，WorkBuddy 正在重启。");
+            } else if switch {
+                println!(
+                    "[WorkBuddy] 凭证已写入，但自动切换未完成，请打开 workbuddy-switch 手动切换。"
+                );
+            } else {
+                println!("[WorkBuddy] 凭证已写入。需要立即登录请加 --switch。");
+            }
+            0
+        }
+        Err(error) => {
+            eprintln!("[失败] {error}");
+            1
+        }
     }
 }
 
@@ -196,11 +248,46 @@ fn open_browser(addr: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::variant_arg;
+    use super::{import_share, variant_arg};
     use wb_switch_core::modules::variant::WbVariant;
 
     fn args(items: &[&str]) -> Vec<String> {
         items.iter().map(|s| s.to_string()).collect()
+    }
+
+    /// 分享包的 `.bat` 靠退出码判断成败，缺参数必须是失败码而不是 panic。
+    #[test]
+    fn import_share_without_target_reports_usage() {
+        assert_eq!(import_share(&args(&["import-share"])), 2);
+        assert_eq!(import_share(&args(&["import-share", "--switch"])), 2);
+    }
+
+    /// 目标不存在时给失败码（1），不能是 2——2 专指「参数用错了」。
+    #[test]
+    fn import_share_with_missing_package_fails_cleanly() {
+        let missing = std::env::temp_dir().join(format!("wb-share-missing-{}", std::process::id()));
+        assert_eq!(
+            import_share(&args(&["import-share", &missing.to_string_lossy()])),
+            1
+        );
+    }
+
+    /// 解析必须对两种 argv 形态都成立：`main` 传完整 argv（含程序名），
+    /// 测试传从子命令开始的切片。二者混淆过一次（`skip(2)`），
+    /// 结果是把目标路径当子命令吃掉，把「路径不存在」误报成「参数用错」。
+    #[test]
+    fn import_share_parses_target_with_or_without_program_name() {
+        let missing = std::env::temp_dir().join(format!("wb-share-argv-{}", std::process::id()));
+        let path = missing.to_string_lossy().to_string();
+        // 带程序名（真实调用形态）
+        assert_eq!(
+            import_share(&args(&["wb-switch.exe", "import-share", &path])),
+            1
+        );
+        // 不带程序名（测试切片形态）
+        assert_eq!(import_share(&args(&["import-share", &path])), 1);
+        // 两种形态下漏参数都要落到「参数用错」
+        assert_eq!(import_share(&args(&["wb-switch.exe", "import-share"])), 2);
     }
 
     /// 不传档位时必须仍是国内版（改造前行为）。

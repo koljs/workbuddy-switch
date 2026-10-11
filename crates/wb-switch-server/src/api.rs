@@ -225,6 +225,7 @@ pub fn router() -> Router {
         )
         // OpenAI 兼容网关 + 风控体检：独立模块，见 gateway_api.rs。
         .merge(crate::gateway_api::router())
+        .merge(crate::share_api::router())
         .fallback(static_handler)
 }
 
