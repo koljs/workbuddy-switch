@@ -20,9 +20,7 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
-use wb_switch_core::modules::{
-    account, config, gateway, refresh, risk, variant::WbVariant,
-};
+use wb_switch_core::modules::{account, config, gateway, refresh, risk, variant::WbVariant};
 
 /// 本模块的全部路由。
 pub fn router() -> Router {
@@ -107,7 +105,10 @@ async fn api_gateway_models(Query(params): Query<HashMap<String, String>>) -> Re
 
     let Some(account) = gateway::entries(variant).into_iter().next() else {
         return json_err(
-            format!("没有可用的{}账号（先在账号页保存一个）", gateway::realm_label(variant)),
+            format!(
+                "没有可用的{}账号（先在账号页保存一个）",
+                gateway::realm_label(variant)
+            ),
             StatusCode::BAD_REQUEST,
         );
     };
@@ -179,7 +180,10 @@ fn v1_unknown(variant: WbVariant) -> Response {
 }
 
 /// 网关未启用 / 密钥不对这类前置校验。
-fn gate_or_error(variant: WbVariant, headers: &HeaderMap) -> Result<gateway::RealmConfig, Response> {
+fn gate_or_error(
+    variant: WbVariant,
+    headers: &HeaderMap,
+) -> Result<gateway::RealmConfig, Response> {
     let cfg = gateway::realm_config(variant);
     if !cfg.enabled {
         return Err(openai_json(
@@ -222,7 +226,10 @@ async fn v1_models(headers: HeaderMap, variant: WbVariant) -> Response {
         return openai_json(
             502,
             gateway::openai_error(
-                &format!("没有可用的{}账号（先在管理器里保存一个）", gateway::realm_label(variant)),
+                &format!(
+                    "没有可用的{}账号（先在管理器里保存一个）",
+                    gateway::realm_label(variant)
+                ),
                 502,
                 "upstream_error",
                 "upstream_error",
@@ -278,7 +285,10 @@ async fn v1_chat(headers: HeaderMap, body: Value, variant: WbVariant) -> Respons
         return openai_json(
             502,
             gateway::openai_error(
-                &format!("没有可用的{}账号（先在管理器里保存一个）", gateway::realm_label(variant)),
+                &format!(
+                    "没有可用的{}账号（先在管理器里保存一个）",
+                    gateway::realm_label(variant)
+                ),
                 502,
                 "upstream_error",
                 "upstream_error",

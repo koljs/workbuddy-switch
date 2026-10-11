@@ -69,7 +69,11 @@ impl RiskState {
 /// 把一次对话尝试的结果归类成体检结论 → (state, 上游 code, 给人看的话)。
 pub fn classify(error: Option<&GatewayError>) -> (RiskState, Option<i64>, String) {
     let Some(error) = error else {
-        return (RiskState::Ok, None, "对话链路正常，这个号现在能用".to_string());
+        return (
+            RiskState::Ok,
+            None,
+            "对话链路正常，这个号现在能用".to_string(),
+        );
     };
 
     // 网络层失败：status 0 表示请求根本没发出去 / 没收到响应。
@@ -77,7 +81,10 @@ pub fn classify(error: Option<&GatewayError>) -> (RiskState, Option<i64>, String
         return (
             RiskState::Network,
             None,
-            format!("网络问题（可能是本机网络，不一定是号坏了）：{}", error.message),
+            format!(
+                "网络问题（可能是本机网络，不一定是号坏了）：{}",
+                error.message
+            ),
         );
     }
 
@@ -177,10 +184,7 @@ pub async fn check_one(account: &Value) -> Value {
     let outcome = match open_chat(&working, &body, &mut note, &conversation_id, &request_id).await {
         Ok((raw, _)) => {
             let frames = crate::modules::gateway::iter_raw_frames(&raw);
-            match aggregate(&frames, "auto") {
-                Ok(_) => None,
-                Err(err) => Some(err),
-            }
+            aggregate(&frames, "auto").err()
         }
         Err(err) => Some(err),
     };
@@ -252,7 +256,10 @@ pub async fn check_all(realm: Option<&str>) -> Value {
             .and_then(|v| v.as_str())
             .unwrap_or("other")
             .to_string();
-        if let Some(node) = counts.get_mut(&state).and_then(|v| v.as_i64().map(|n| n + 1)) {
+        if let Some(node) = counts
+            .get_mut(&state)
+            .and_then(|v| v.as_i64().map(|n| n + 1))
+        {
             counts[&state] = json!(node);
         }
         rows.push(result);
@@ -293,7 +300,12 @@ mod tests {
 
     #[test]
     fn classify_auth_for_401() {
-        let err = GatewayError::new(401, "upstream_error", "unauthorized", "authentication_error");
+        let err = GatewayError::new(
+            401,
+            "upstream_error",
+            "unauthorized",
+            "authentication_error",
+        );
         assert_eq!(classify(Some(&err)).0, RiskState::Auth);
     }
 

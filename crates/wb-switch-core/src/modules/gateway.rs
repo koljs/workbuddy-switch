@@ -67,7 +67,8 @@ pub const UPSTREAM_RISK_CODES: [i64; 4] = [10085, 11101, 11128, 11140];
 /// 上游明确的账号级风控码（体检判 `risk` 只认它）。
 pub const UPSTREAM_RISK_CONTROL_CODE: i64 = 11140;
 /// 上游支持的最高推理档位集合。
-pub const REASONING_EFFORTS: [&str; 7] = ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
+pub const REASONING_EFFORTS: [&str; 7] =
+    ["off", "minimal", "low", "medium", "high", "xhigh", "max"];
 /// 错误文案截断长度。
 const TRUNCATE_LEN: usize = 300;
 
@@ -181,17 +182,34 @@ impl GatewayError {
     }
 
     pub fn invalid_request(message: impl Into<String>) -> Self {
-        Self::new(400, "invalid_request_error", message, "invalid_request_error")
+        Self::new(
+            400,
+            "invalid_request_error",
+            message,
+            "invalid_request_error",
+        )
     }
 
     /// OpenAI 规范错误体。
     pub fn to_body(&self) -> Value {
-        openai_error(&self.message, self.status, &self.code, &self.err_type, self.param.clone())
+        openai_error(
+            &self.message,
+            self.status,
+            &self.code,
+            &self.err_type,
+            self.param.clone(),
+        )
     }
 }
 
 /// 按 OpenAI 规范组装错误体。
-pub fn openai_error(message: &str, status: u16, code: &str, err_type: &str, param: Option<Value>) -> Value {
+pub fn openai_error(
+    message: &str,
+    status: u16,
+    code: &str,
+    err_type: &str,
+    param: Option<Value>,
+) -> Value {
     json!({
         "error": {
             "message": truncate(message, TRUNCATE_LEN),
@@ -214,10 +232,9 @@ pub fn truncate(text: &str, limit: usize) -> String {
 
 /// 从上游响应体里取业务 code（数字或数字字符串都认）。
 pub fn upstream_code(body: &Value) -> Option<i64> {
-    let raw = body.get("code").or_else(|| {
-        body.get("error")
-            .and_then(|e| e.get("code"))
-    })?;
+    let raw = body
+        .get("code")
+        .or_else(|| body.get("error").and_then(|e| e.get("code")))?;
     raw.as_i64()
         .or_else(|| raw.as_str().and_then(|s| s.trim().parse().ok()))
 }
@@ -253,12 +270,7 @@ pub fn map_upstream_error(status: u16, body: &Value) -> GatewayError {
         401 | 403 => (401, "authentication_error"),
         _ => (502, "upstream_error"),
     };
-    GatewayError::new(
-        mapped_status,
-        "upstream_error",
-        message,
-        err_type,
-    )
+    GatewayError::new(mapped_status, "upstream_error", message, err_type)
 }
 
 /// 校验客户端带来的密钥。定长比较，避免时序侧信道。
@@ -484,7 +496,10 @@ fn today_key() -> String {
 /// 今日已用次数（跨日自动归零，且会落盘，重启不白送额度）。
 pub fn today_count(variant: WbVariant) -> i64 {
     let usage = load_usage();
-    let node = usage.get(realm_str(variant)).cloned().unwrap_or_else(empty_usage);
+    let node = usage
+        .get(realm_str(variant))
+        .cloned()
+        .unwrap_or_else(empty_usage);
     let date = node.get("date").and_then(|v| v.as_str()).unwrap_or("");
     if date != today_key() {
         return 0;
@@ -705,7 +720,11 @@ pub async fn fetch_models(account: &Value) -> Result<Value, GatewayError> {
         }
     }
 
-    let refreshed = ensure_fresh_token(account.clone(), &crate::modules::config::load_checkin_config()).await;
+    let refreshed = ensure_fresh_token(
+        account.clone(),
+        &crate::modules::config::load_checkin_config(),
+    )
+    .await;
     let uid = get_str(&refreshed, "uid").unwrap_or_default();
     let token = get_str(&refreshed, "access_token").unwrap_or_default();
     let (chat_base, _, _) = bases(variant);
@@ -717,7 +736,8 @@ pub async fn fetch_models(account: &Value) -> Result<Value, GatewayError> {
     let mut last_error: Option<GatewayError> = None;
     for path in MODEL_LIST_PATHS {
         let url = format!("{chat_base}{path}");
-        let (status, _, text) = http_request_raw(&url, "GET", None, Some(&headers), None, true).await;
+        let (status, _, text) =
+            http_request_raw(&url, "GET", None, Some(&headers), None, true).await;
         if status == 404 || status == 405 {
             continue;
         }
@@ -815,11 +835,16 @@ pub fn common_headers(account: &Value) -> HashMap<String, String> {
     headers.insert("Origin".to_string(), origin.to_string());
     headers.insert("Referer".to_string(), format!("{origin}/"));
     headers.insert("User-Agent".to_string(), client_ua(variant));
-    headers.insert("Accept-Language".to_string(), "zh-CN,en-US;q=0.9".to_string());
+    headers.insert(
+        "Accept-Language".to_string(),
+        "zh-CN,en-US;q=0.9".to_string(),
+    );
     headers.insert("X-User-Id".to_string(), uid.clone());
     headers.insert("X-Machine-ID".to_string(), stable_id(&uid, "machine"));
     headers.insert("X-Session-ID".to_string(), stable_id(&uid, "session"));
-    if let Some(eid) = get_str(account, "enterpriseId").or_else(|| get_str(account, "enterprise_id")) {
+    if let Some(eid) =
+        get_str(account, "enterpriseId").or_else(|| get_str(account, "enterprise_id"))
+    {
         headers.insert("X-Enterprise-Id".to_string(), eid.clone());
         headers.insert("X-Tenant-Id".to_string(), eid);
     }
@@ -830,7 +855,11 @@ pub fn common_headers(account: &Value) -> HashMap<String, String> {
 }
 
 /// 对话专属出站头族（对齐官方桌面客户端形态）。
-pub fn chat_headers(account: &Value, conversation_id: &str, request_id: &str) -> HashMap<String, String> {
+pub fn chat_headers(
+    account: &Value,
+    conversation_id: &str,
+    request_id: &str,
+) -> HashMap<String, String> {
     let variant = variant_of(account);
     let uid = get_str(account, "uid").unwrap_or_default();
     let token = get_str(account, "access_token").unwrap_or_default();
@@ -878,13 +907,20 @@ pub fn prepare_body(payload: &Value) -> Result<Value, GatewayError> {
     translate_max_tokens(&mut body);
 
     // stream_options.include_usage：官方流默认不带 usage，客户端要就显式打开。
-    if body.get("stream").and_then(|v| v.as_bool()).unwrap_or(false) {
+    if body
+        .get("stream")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+    {
         let include = body
             .get("stream_options")
             .and_then(|v| v.get("include_usage"))
             .and_then(|v| v.as_bool())
             .unwrap_or(false);
-        body.insert("stream_options".to_string(), json!({"include_usage": include}));
+        body.insert(
+            "stream_options".to_string(),
+            json!({"include_usage": include}),
+        );
     }
     body.remove("stream_options_if_absent");
 
@@ -942,7 +978,11 @@ fn normalize_tool_choice(body: &mut serde_json::Map<String, Value>) {
 
 /// 推理档位归一：不在白名单内的一律去掉，避免上游直接报错。
 fn normalize_reasoning_effort(body: &mut serde_json::Map<String, Value>) {
-    let Some(effort) = body.get("reasoning_effort").and_then(|v| v.as_str()).map(|s| s.to_string()) else {
+    let Some(effort) = body
+        .get("reasoning_effort")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string())
+    else {
         return;
     };
     if !REASONING_EFFORTS.contains(&effort.as_str()) {
@@ -983,7 +1023,10 @@ pub async fn open_chat(
             last_error = Some(err);
             continue;
         }
-        return Ok((text, chat_paths(variant).iter().map(|s| s.to_string()).collect()));
+        return Ok((
+            text,
+            chat_paths(variant).iter().map(|s| s.to_string()).collect(),
+        ));
     }
 
     Err(last_error.unwrap_or_else(|| {
@@ -1083,10 +1126,7 @@ pub fn normalize_frame(frame: &Value, first_id: &str) -> Value {
         );
     }
 
-    let finish_reason = frame
-        .get("finish_reason")
-        .cloned()
-        .unwrap_or(Value::Null);
+    let finish_reason = frame.get("finish_reason").cloned().unwrap_or(Value::Null);
 
     json!({
         "id": first_id,
@@ -1129,7 +1169,8 @@ pub fn merge_tool_call_delta(merged: &mut serde_json::Map<String, Value>, delta:
                     .and_then(|f| f.get("arguments"))
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                if let Some(function) = existing.get_mut("function").and_then(|f| f.as_object_mut()) {
+                if let Some(function) = existing.get_mut("function").and_then(|f| f.as_object_mut())
+                {
                     if !name.is_empty() {
                         function.insert("name".to_string(), json!(name));
                     }
@@ -1240,9 +1281,15 @@ pub fn iter_openai_sse(raw: &str, model_hint: &str) -> Vec<String> {
         let mut chunk = normalize_frame(&obj, &first_id);
         if let Some(obj_mut) = chunk.as_object_mut() {
             obj_mut.insert("model".to_string(), json!(model_hint));
-            obj_mut.insert("created".to_string(), json!(chrono::Local::now().timestamp()));
+            obj_mut.insert(
+                "created".to_string(),
+                json!(chrono::Local::now().timestamp()),
+            );
         }
-        out.push(format!("data: {}\n\n", serde_json::to_string(&chunk).unwrap_or_default()));
+        out.push(format!(
+            "data: {}\n\n",
+            serde_json::to_string(&chunk).unwrap_or_default()
+        ));
     }
     out.push("data: [DONE]\n\n".to_string());
     out
@@ -1256,7 +1303,10 @@ pub fn iter_openai_sse(raw: &str, model_hint: &str) -> Vec<String> {
 pub fn snapshot(variant: WbVariant) -> Value {
     let cfg = realm_config(variant);
     let usage = load_usage();
-    let node = usage.get(realm_str(variant)).cloned().unwrap_or_else(empty_usage);
+    let node = usage
+        .get(realm_str(variant))
+        .cloned()
+        .unwrap_or_else(empty_usage);
     let today = today_key();
     let today_used = if node.get("date").and_then(|v| v.as_str()).unwrap_or("") == today {
         node.get("today").and_then(|v| v.as_i64()).unwrap_or(0)
@@ -1353,13 +1403,17 @@ mod tests {
         assert!(body.get("reasoning_effort").is_none());
         assert_eq!(body["messages"][0]["role"], json!("system"));
 
-        let defaulted = prepare_body(&json!({"messages": [{"role": "user", "content": "x"}]})).unwrap();
+        let defaulted =
+            prepare_body(&json!({"messages": [{"role": "user", "content": "x"}]})).unwrap();
         assert_eq!(defaulted["max_tokens"], json!(DEFAULT_MAX_TOKENS));
     }
 
     #[test]
     fn upstream_risk_code_maps_to_risk_error() {
-        let err = map_upstream_error(403, &json!({"code": 11140, "displayMsg": "request illegal"}));
+        let err = map_upstream_error(
+            403,
+            &json!({"code": 11140, "displayMsg": "request illegal"}),
+        );
         assert!(err.code.starts_with("upstream_risk_control"));
         assert_eq!(err.status, 502);
     }
@@ -1404,7 +1458,10 @@ mod tests {
             &json!({"tool_calls": [{"index": 0, "function": {"arguments": ":1}"}}]}),
         );
         assert_eq!(merged["tool_calls"][0]["function"]["name"], json!("f"));
-        assert_eq!(merged["tool_calls"][0]["function"]["arguments"], json!("{\"a\":1}"));
+        assert_eq!(
+            merged["tool_calls"][0]["function"]["arguments"],
+            json!("{\"a\":1}")
+        );
     }
 
     #[test]
