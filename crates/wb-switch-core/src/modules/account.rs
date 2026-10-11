@@ -144,6 +144,15 @@ pub fn account_meta(acc: &Value) -> Value {
         "needsReloginReason": display_value(acc, "needs_relogin_reason"),
         // 档位随元数据下发，供宿主按档位过滤列表（缺省国内版，历史数据零迁移）。
         "variant": variant_of(acc).as_str(),
+        // 账号级出口代理：`proxy` 给编辑器回填，`proxyMasked` 给列表展示（掩掉密码）。
+        // 与 token 不同，代理凭据不是账号本身的凭据，且管理接口本就只在回环上跑
+        // （网关快照里连 API Key 都是明文下发的），所以这里下发原文而不做只写处理。
+        "proxy": account_proxy(acc).map(Value::String).unwrap_or(Value::Null),
+        "proxyMasked": account_proxy(acc)
+            .map(|raw| Value::String(crate::modules::proxy::mask(&raw)))
+            .unwrap_or(Value::Null),
+        // 记录「这个号是在哪个出口 IP 上登录的」，供同 IP 多号提示用。
+        "egressIp": display_value(acc, "egress_ip"),
     })
 }
 
@@ -180,6 +189,17 @@ pub fn secret_value(v: &Value, key: &str) -> Option<Value> {
 /// 账号档位：显式 `variant` 字段优先，缺失时按 `domain` 后缀兜底，缺省国内版。
 pub fn variant_of(acc: &Value) -> WbVariant {
     WbVariant::from_account(acc)
+}
+
+/// 账号级出口代理（`http://host:port` / `https://host:port`）。
+///
+/// 存成账号上的一个普通字段：账号库是自由 JSON，加字段不需要迁移。缺失、空串、
+/// 纯空白都按「直连」处理——老账号自然就是直连，零改动。
+///
+/// 只做**取值**不做校验：格式对不对由 [`crate::modules::proxy::normalize`] 在写入
+/// 和发起请求前把关，这里保持纯函数，方便在挑号循环里零成本调用。
+pub fn account_proxy(acc: &Value) -> Option<String> {
+    get_str(acc, "proxy")
 }
 
 /// 合并采集结果时保留已有档位：已入库的档位不得因再次采集而丢失。

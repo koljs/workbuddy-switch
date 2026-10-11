@@ -20,7 +20,9 @@ use axum::routing::{any, get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
-use wb_switch_core::modules::{account, config, gateway, refresh, risk, variant::WbVariant};
+use wb_switch_core::modules::{
+    account, config, egress, gateway, proxy, refresh, risk, variant::WbVariant,
+};
 
 /// 本模块的全部路由。
 pub fn router() -> Router {
@@ -30,6 +32,11 @@ pub fn router() -> Router {
         .route("/api/gateway/usage/clear", post(api_gateway_clear_usage))
         .route("/api/gateway/models", get(api_gateway_models))
         .route("/api/risk/check", post(api_risk_check))
+        .route("/api/egress", get(api_egress_snapshot))
+        .route("/api/egress/detect", post(api_egress_detect))
+        .route("/api/egress/assign", post(api_egress_assign))
+        .route("/api/proxy/test", post(api_proxy_test))
+        .route("/api/account-proxy", post(api_account_proxy))
         .route("/v1/models", get(v1_cn_models))
         .route("/v1/chat/completions", post(v1_cn_chat))
         .route("/v1-global/models", get(v1_global_models))
@@ -129,6 +136,115 @@ async fn api_risk_check(body: Option<Json<Value>>) -> Response {
         .and_then(|v| v.as_str())
         .map(|raw| raw.to_string());
     json_ok(risk::check_all(realm.as_deref()).await)
+}
+
+// ---------------------------------------------------------------------------
+// 出口 IP 与账号级代理
+// ---------------------------------------------------------------------------
+
+/// GET /api/egress —— 当前出口 IP + 该 IP 上挂了哪些号 + 换 IP 向导。
+async fn api_egress_snapshot() -> Response {
+    json_ok(egress::snapshot())
+}
+
+/// POST /api/egress/detect —— 检测出口 IP。body: `{"force": true}` 绕过 5 分钟缓存。
+///
+/// 默认 `force = false`：页面每次挂载都打一遍探测接口既慢又容易被限流。向导第 3 步
+/// （换完 IP 要确认）必须传 `force`，否则会读到换之前的缓存值，把「没换成功」看成成功。
+async fn api_egress_detect(body: Option<Json<Value>>) -> Response {
+    let force = body
+        .as_ref()
+        .and_then(|Json(value)| value.get("force"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    json_ok(egress::detect(force).await)
+}
+
+/// POST /api/egress/assign —— 把出口 IP 记到一批账号上。
+///
+/// body: `{"accountIds": ["id"...], "ip": "1.2.3.4"}`；`ip` 缺省时用当前检测到的 IP
+/// （向导第 4 步「一键确认」走这条）。
+async fn api_egress_assign(Json(body): Json<Value>) -> Response {
+    let ids: Vec<String> = body
+        .get("accountIds")
+        .and_then(|v| v.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+    if ids.is_empty() {
+        return json_err("accountIds 不能为空", StatusCode::BAD_REQUEST);
+    }
+    let explicit = body
+        .get("ip")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty());
+    let result = match explicit {
+        Some(ip) => egress::assign(&ids, ip),
+        None => egress::assign_current(&ids),
+    };
+    json_ok(result)
+}
+
+/// POST /api/proxy/test —— 代理连通性自检。body: `{"proxy": "http://host:port"}`。
+///
+/// 返回体里的 `proxy` 是**掩码后**的地址，不回显密码。
+async fn api_proxy_test(Json(body): Json<Value>) -> Response {
+    let raw = body.get("proxy").and_then(|v| v.as_str()).unwrap_or("");
+    json_ok(proxy::test(raw).await)
+}
+
+/// POST /api/account-proxy —— 设置/清除某个账号的出口代理。
+///
+/// body: `{"id": "...", "proxy": "http://host:port"}`；`proxy` 传空串表示改回直连。
+/// 地址先过 [`proxy::normalize`] 再落库——存进去的一定是能直接喂给 reqwest 的形态，
+/// 免得把「用户以为配好了」的坏地址留到真正发请求时才炸。
+async fn api_account_proxy(Json(body): Json<Value>) -> Response {
+    let Some(id) = body
+        .get("id")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+    else {
+        return json_err("缺少账号 id", StatusCode::BAD_REQUEST);
+    };
+    let raw = body.get("proxy").and_then(|v| v.as_str()).unwrap_or("");
+    let normalized = match proxy::normalize(raw) {
+        Ok(value) => value,
+        Err(message) => return json_err(message, StatusCode::BAD_REQUEST),
+    };
+
+    let Some(mut account) = account::load_accounts()
+        .into_iter()
+        .find(|acc| account::get_str(acc, "id").as_deref() == Some(id))
+    else {
+        return json_err("账号不存在", StatusCode::NOT_FOUND);
+    };
+    if let Some(obj) = account.as_object_mut() {
+        match &normalized {
+            Some(value) => {
+                obj.insert("proxy".to_string(), json!(value));
+            }
+            // 直连：删字段而不是写空串，让账号库保持「没配过代理」的原样。
+            None => {
+                obj.remove("proxy");
+            }
+        }
+    }
+    if let Err(error) = account::upsert_account(&account) {
+        return json_err(
+            format!("保存失败: {error}"),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        );
+    }
+    json_ok(json!({
+        "id": id,
+        "proxy": normalized.clone().unwrap_or_default(),
+        "masked": normalized.as_deref().map(proxy::mask).unwrap_or_default(),
+    }))
 }
 
 // ---------------------------------------------------------------------------

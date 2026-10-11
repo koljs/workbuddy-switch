@@ -1,4 +1,4 @@
-import { ArrowRight, CalendarCheck2, CalendarDays, CalendarOff, Check, CircleCheck, Clock3, Coins, Ellipsis, Gauge, Info, Loader2, PackageOpen, PlaneTakeoff, RefreshCw, Sparkles, Star, Trash2 } from "lucide-react";
+import { ArrowRight, CalendarCheck2, CalendarDays, CalendarOff, Check, CircleCheck, Clock3, Coins, Ellipsis, Gauge, Info, Loader2, PackageOpen, PlaneTakeoff, Plug, RefreshCw, Sparkles, Star, Trash2 } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 
 import { Badge } from "@/components/ui/badge";
@@ -265,6 +265,8 @@ interface Props {
   onRefresh?: (a: AccountMeta) => void;
   /** 打开「账号信息」弹框（查看信息、编辑备注、选择显示字段）。 */
   onShowInfo?: (a: AccountMeta) => void;
+  /** 打开「出口代理」弹框（按号配 HTTP 代理，降低同 IP 多号的风控概率）。 */
+  onEditProxy?: (a: AccountMeta) => void;
   onSwitch?: (a: AccountMeta) => void;
   todayCheckedIn?: boolean;
   /** 单账号参与许可，独立于全局开关；undefined 表示配置尚未加载。 */
@@ -409,7 +411,7 @@ function CreditResourceRow({ resource, compact, placeholderLabel }: { resource?:
   );
 }
 
-export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onSwitch, todayCheckedIn, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
+export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInfo, onEditProxy, onSwitch, todayCheckedIn, autoCheckinAllowed, travelStatus, rateLimits, credit, creditLoading, creditUpdatedAt, creditPriority, workbuddyActive, codebuddyCliConfigured, codebuddyCliActive, codebuddyCliBusy, onSwitchCodebuddyCli, codebuddyCliLoading, codebuddyCnIdeAvailable, codebuddyCnIdeActive, codebuddyCnIdeBusy, codebuddyCnIdeLoading, onSwitchCodebuddyCnIde, vscodeExtInstalled, vscodeExtExtensionInstalled, vscodeExtAvailable, vscodeExtActive, vscodeExtBusy, vscodeExtLoading, onSwitchVscodeExt, jetbrainsInstalled, jetbrainsPluginInstalled, jetbrainsAvailable, jetbrainsActive, jetbrainsBusy, jetbrainsLoading, onSwitchJetbrains, enabledTools, featuresDisabled = true, compact = false }: Props) {
   /** 支持工具开关：关闭的端整块不渲染（缺省视为开启）。 */
   const toolEnabled = (id: ToolId) => enabledTools?.[id] !== false;
   const [resourcesOpen, setResourcesOpen] = useState(false);
@@ -476,6 +478,21 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
         </Tooltip>
       )}
       {!compact && activeProductCount >= 2 && <Badge variant="secondary" className={cn(chipClass, "text-muted-foreground")}>{activeProductCount} 个工具正在使用</Badge>}
+      {/* 代理标记：一眼看出哪些号单独走了出口，不用逐个点开弹窗确认。 */}
+      {account.proxy && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="secondary" className={cn(chipClass, "text-muted-foreground")}>
+              <Plug className="size-3.5" />
+              代理
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent side="top">
+            出口代理 {account.proxyMasked ?? "已配置"}
+            {account.egressIp ? `　·　登录出口 ${account.egressIp}` : ""}
+          </TooltipContent>
+        </Tooltip>
+      )}
     </>
   );
 
@@ -555,6 +572,11 @@ export function AccountCard({ account, onDelete, onCheckin, onRefresh, onShowInf
               {!demoModeEnabled && onCheckin && todayCheckedIn !== true && (
                 <DropdownMenuItem disabled={featuresDisabled || !onCheckin} onSelect={() => onCheckin?.(account)}>
                   <CircleCheck />手动签到
+                </DropdownMenuItem>
+              )}
+              {!demoModeEnabled && (
+                <DropdownMenuItem disabled={featuresDisabled || !onEditProxy} onSelect={() => onEditProxy?.(account)}>
+                  <Plug />出口代理
                 </DropdownMenuItem>
               )}
               {!demoModeEnabled && (

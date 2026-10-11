@@ -32,6 +32,12 @@ export interface AccountMeta {
   needsReloginReason: string | null;
   /** 账号所属档位；缺省（旧后端/历史账号）按国内版处理。 */
   variant?: WbVariant;
+  /** 账号级出口代理原文（`http://host:port`，可能含 `user:pass@`）；空 = 直连。 */
+  proxy?: string | null;
+  /** 掩码后的代理地址，列表展示用（密码替换成 `***`）。 */
+  proxyMasked?: string | null;
+  /** 这个号是在哪个出口 IP 上登录的；供「同 IP 多号」提示用。 */
+  egressIp?: string | null;
 }
 
 export interface AppStatus {

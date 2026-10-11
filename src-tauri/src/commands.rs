@@ -9,10 +9,11 @@ use serde_json::{json, Value};
 use tauri::Emitter;
 use wb_switch_core::modules::{
     account, auth_file, checkin, codebuddy_cli, codebuddy_cn_ide, codebuddy_ide,
-    codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, error_log,
-    export_import, gateway, jetbrains, limits, notifications, oauth, process, rate_limit_events,
-    rate_limit_hook, refresh, risk, rotate, session, session_groups, switch, token_stats, travel,
-    update, variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync,
+    codebuddy_ide_session, codebuddy_ide_session_sync, credit_usage, credits, egress, error_log,
+    export_import, gateway, jetbrains, limits, notifications, oauth, process, proxy,
+    rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, switch,
+    token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
+    vscode_session_sync,
 };
 
 #[derive(Serialize)]
@@ -1523,4 +1524,68 @@ pub async fn fetch_gateway_models(realm: Option<String>) -> Value {
 #[tauri::command]
 pub async fn check_account_risk(realm: Option<String>) -> Value {
     risk::check_all(realm.as_deref()).await
+}
+
+// ---------------------------------------------------------------------------
+// 出口 IP 与账号级代理
+//
+// 对应 gateway_api.rs 里的 /api/egress*、/api/proxy/test、/api/account-proxy。
+// 这一组是「降低同 IP 多账号触发风控」的两半：egress 看现在从哪出去，proxy 决定
+// 每个号从哪出去。
+// ---------------------------------------------------------------------------
+
+/// GET /api/egress —— 当前出口 IP + 该 IP 上挂了哪些号 + 换 IP 向导。
+#[tauri::command]
+pub fn get_egress_snapshot() -> Value {
+    egress::snapshot()
+}
+
+/// POST /api/egress/detect —— 检测出口 IP。`force` 绕过 5 分钟缓存。
+///
+/// 换 IP 向导第 3 步（确认真的换了）必须传 `force = true`，否则读到的是换之前的
+/// 缓存值，会把「没换成功」显示成成功。
+#[tauri::command]
+pub async fn detect_egress(force: Option<bool>) -> Value {
+    egress::detect(force.unwrap_or(false)).await
+}
+
+/// POST /api/egress/assign —— 把出口 IP 记到一批账号上；`ip` 缺省用当前检测到的。
+#[tauri::command]
+pub fn assign_egress(account_ids: Vec<String>, ip: Option<String>) -> Value {
+    match ip.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        Some(ip) => egress::assign(&account_ids, ip),
+        None => egress::assign_current(&account_ids),
+    }
+}
+
+/// POST /api/proxy/test —— 代理连通性自检（返回体里的地址是掩码后的）。
+#[tauri::command]
+pub async fn test_account_proxy(proxy_url: String) -> Value {
+    proxy::test(&proxy_url).await
+}
+
+/// POST /api/account-proxy —— 设置/清除某个账号的出口代理；空串 = 改回直连。
+#[tauri::command]
+pub fn save_account_proxy(id: String, proxy_url: String) -> Result<Value, String> {
+    let normalized = proxy::normalize(&proxy_url)?;
+    let mut account = account::load_accounts()
+        .into_iter()
+        .find(|acc| account::get_str(acc, "id").as_deref() == Some(id.trim()))
+        .ok_or_else(|| "账号不存在".to_string())?;
+    if let Some(obj) = account.as_object_mut() {
+        match &normalized {
+            Some(value) => {
+                obj.insert("proxy".to_string(), json!(value));
+            }
+            None => {
+                obj.remove("proxy");
+            }
+        }
+    }
+    account::upsert_account(&account).map_err(|error| error.to_string())?;
+    Ok(json!({
+        "id": id.trim(),
+        "proxy": normalized.clone().unwrap_or_default(),
+        "masked": normalized.as_deref().map(proxy::mask).unwrap_or_default(),
+    }))
 }

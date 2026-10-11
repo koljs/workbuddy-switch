@@ -7,8 +7,10 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 
-use crate::modules::account::{build_auth_headers, upsert_account};
-use crate::modules::config::{http_request, load_checkin_config, norm_ts, now_ms, RunFlagGuard};
+use crate::modules::account::{account_proxy, build_auth_headers, upsert_account};
+use crate::modules::config::{
+    http_request_with_proxy, load_checkin_config, norm_ts, now_ms, RunFlagGuard,
+};
 
 static KEEPALIVE_RUNNING: AtomicBool = AtomicBool::new(false);
 
@@ -58,7 +60,17 @@ pub async fn refresh_account_token(mut account: Value) -> Value {
     let headers = refresh_headers(&account, &rt);
     // 刷新必须走账号自身档位的域名：把国际版 token 打到国内网关等于登录失效。
     let url = refresh_url(&account);
-    let resp = http_request(&url, "POST", Some(json!({})), Some(&headers)).await;
+    // 续期也要走该账号自己的出口：token 刷新是上游判定「这个号从哪来」的另一个
+    // 观测点，只在对话时走代理而续期直连，等于把号的位置暴露在同一台机器上。
+    let proxy = account_proxy(&account);
+    let resp = http_request_with_proxy(
+        &url,
+        "POST",
+        Some(json!({})),
+        Some(&headers),
+        proxy.as_deref(),
+    )
+    .await;
     let code = resp.get("code").and_then(|v| v.as_i64()).unwrap_or(-1);
     if code != 0 && code != 200 {
         account["needs_relogin"] = json!(true);

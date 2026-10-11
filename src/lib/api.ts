@@ -198,6 +198,12 @@ const ROUTES: Record<string, Route> = {
   clear_gateway_usage: { method: "POST", path: "/api/gateway/usage/clear" },
   fetch_gateway_models: { method: "GET", path: "/api/gateway/models" },
   check_account_risk: { method: "POST", path: "/api/risk/check" },
+  // 出口 IP 与账号级代理：egress 看现在从哪出去，proxy 决定每个号从哪出去。
+  get_egress_snapshot: { method: "GET", path: "/api/egress" },
+  detect_egress: { method: "POST", path: "/api/egress/detect" },
+  assign_egress: { method: "POST", path: "/api/egress/assign" },
+  test_account_proxy: { method: "POST", path: "/api/proxy/test" },
+  save_account_proxy: { method: "POST", path: "/api/account-proxy" },
 };
 
 /**
@@ -1238,4 +1244,119 @@ export function fetchGatewayModels(
 /** 风控体检：给每个账号真发一条最小对话。`realm` 缺省 = 两个档位都跑。 */
 export function checkAccountRisk(realm?: GatewayRealm | "all"): Promise<RiskReport> {
   return call("check_account_risk", realm ? { realm } : {});
+}
+
+// ---------------------------------------------------------------------------
+// 出口 IP 与账号级代理
+// ---------------------------------------------------------------------------
+
+/** 一次成功的出口 IP 探测结果。 */
+export interface EgressRecord {
+  ip: string;
+  country: string;
+  region: string;
+  city: string;
+  isp: string;
+  /** 探测源标识（ip-api / ipify / ipapi.co）。 */
+  source: string;
+  /** 归属地一行摘要，已按缺失字段裁掉多余空格。 */
+  location: string;
+  /** 毫秒时间戳。 */
+  at: number;
+  atText: string;
+  /** true = 命中 5 分钟缓存，没有真的打探测接口。 */
+  cached: boolean;
+}
+
+/** 检测失败时的返回形态（不抛异常，界面照常渲染）。 */
+export interface EgressFailure {
+  ip: null;
+  error: string;
+  tried?: number;
+}
+
+export type EgressDetectResult = EgressRecord | EgressFailure;
+
+export function isEgressRecord(
+  value: EgressDetectResult,
+): value is EgressRecord {
+  return typeof value.ip === "string" && value.ip.length > 0;
+}
+
+/** 某个出口 IP 上的账号聚合。 */
+export interface EgressSharing {
+  ip: string;
+  count: number;
+  /** count >= threshold，界面据此把提示染成警示色。 */
+  warn: boolean;
+  message: string;
+  accounts: Array<{ id: string; name: string; uid: string; variant: string }>;
+}
+
+export interface EgressGuideStep {
+  step: number;
+  title: string;
+  detail: string;
+  /** 这一步「怎么算做完了」，用来避免用户凭感觉判断。 */
+  doneWhen: string;
+}
+
+export interface EgressSnapshot {
+  current: EgressRecord | null;
+  sharing: EgressSharing;
+  threshold: number;
+  cacheSeconds: number;
+  history: EgressRecord[];
+  guide: EgressGuideStep[];
+}
+
+/** 代理自检结果。`proxy` 字段是掩码后的地址，不含明文密码。 */
+export interface ProxyTestResult {
+  ok: boolean;
+  proxy: string;
+  latencyMs: number | null;
+  /** 该代理看到的出口 IP（连通时才有）。 */
+  ip: string | null;
+  message: string;
+}
+
+/** 当前出口 IP + 该 IP 上挂了哪些号 + 换 IP 向导。 */
+export function getEgressSnapshot(): Promise<EgressSnapshot> {
+  return call("get_egress_snapshot");
+}
+
+/**
+ * 检测出口 IP。`force = true` 绕过 5 分钟缓存。
+ *
+ * 换 IP 向导第 3 步（确认真的换了）必须传 `force`：否则读到的是换之前的缓存值，
+ * 会把「没换成功」显示成成功。
+ */
+export function detectEgress(force = false): Promise<EgressDetectResult> {
+  return call("detect_egress", { force });
+}
+
+/** 把出口 IP 记到一批账号上；`ip` 缺省用当前检测到的 IP。 */
+export function assignEgress(
+  accountIds: string[],
+  ip?: string,
+): Promise<{
+  updated: number;
+  missing: string[];
+  ip: string;
+  error?: string;
+}> {
+  return call("assign_egress", ip ? { accountIds, ip } : { accountIds });
+}
+
+/** 代理连通性自检。 */
+export function testAccountProxy(proxyUrl: string): Promise<ProxyTestResult> {
+  return call("test_account_proxy", { proxyUrl });
+}
+
+/** 设置/清除某个账号的出口代理；传空串表示改回直连。 */
+export function saveAccountProxy(
+  id: string,
+  proxyUrl: string,
+): Promise<{ id: string; proxy: string; masked: string }> {
+  return call("save_account_proxy", { id, proxyUrl });
 }

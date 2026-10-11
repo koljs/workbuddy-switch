@@ -15,6 +15,8 @@ import {
 
 import { AccountCard } from "@/components/account-card";
 import { AccountInfoDialog } from "@/components/account-info-dialog";
+import { AccountProxyDialog } from "@/components/account-proxy-dialog";
+import { EgressBanner } from "@/components/egress-banner";
 import { JetbrainsSwitchDialog } from "@/components/jetbrains-switch-dialog";
 import { CodebuddyIdeSwitchAccountDialog } from "@/components/codebuddy-ide-switch-account-dialog";
 import { DemoAction } from "@/components/demo-action";
@@ -188,6 +190,8 @@ export default function AccountsPage() {
   const [switchAccount, setSwitchAccount] = useState<AccountMeta | null>(null);
   /** 「账号信息」弹框目标账号（查看信息 / 编辑备注 / 选择显示字段）。 */
   const [infoTarget, setInfoTarget] = useState<AccountMeta | null>(null);
+  /** 「出口代理」弹框目标；与 infoTarget 分开，避免两个弹框互相顶掉。 */
+  const [proxyTarget, setProxyTarget] = useState<AccountMeta | null>(null);
   /**
    * 自动签到配置（只读）：只用于决定账号卡片是否展示「自动签到已关闭」chip，
    * 以及状态查询、刷新时跳过哪些账号。控制入口在设置页。
@@ -921,6 +925,8 @@ export default function AccountsPage() {
         </div>
       </header>
 
+      <EgressBanner />
+
       <div className="relative mb-6 overflow-visible rounded-2xl border border-border bg-muted/30 px-5 py-5 shadow-[0_6px_20px_rgba(15,23,42,.025)]">
         <div className="pointer-events-none absolute inset-0 overflow-hidden rounded-2xl">
           <div className="absolute -right-12 -top-20 size-44 rounded-full border-[28px] border-slate-400/[0.035]" />
@@ -1096,6 +1102,7 @@ export default function AccountsPage() {
                 onDelete={onDelete}
                 onSwitch={setSwitchAccount}
                 onShowInfo={setInfoTarget}
+                onEditProxy={setProxyTarget}
                 onCheckin={checkinAvailable ? onCheckin : undefined}
                 onRefresh={onRefresh}
                 todayCheckedIn={checkinMap[a.id]}
@@ -1167,6 +1174,16 @@ export default function AccountsPage() {
           if (!o) setInfoTarget(null);
         }}
         account={infoTarget}
+        onSaved={() => {
+          void fetchAll();
+        }}
+      />
+      <AccountProxyDialog
+        open={proxyTarget !== null}
+        onOpenChange={(o) => {
+          if (!o) setProxyTarget(null);
+        }}
+        account={proxyTarget}
         onSaved={() => {
           void fetchAll();
         }}
