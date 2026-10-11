@@ -22,7 +22,7 @@ use wb_switch_core::modules::{
     codebuddy_ide_session, codebuddy_ide_session_sync, config, credit_usage, credits,
     export_import, jetbrains, limits, notifications, oauth, process, rate_limit_events,
     rate_limit_hook, refresh, rotate, session, session_groups, switch, token_stats, travel, update,
-    variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync,
+    variant::WbVariant, vscode_ext, vscode_session, vscode_session_sync, workdaddy,
 };
 
 /// WorkBuddy 运行状态缓存：Windows 上检测要跑 tasklist（慢），缓存几秒避免
@@ -133,6 +133,7 @@ pub fn router() -> Router {
         )
         .route("/api/import/preview", post(api_preview_import))
         .route("/api/import", post(api_import))
+        .route("/api/import-workdaddy", post(api_import_workdaddy))
         .route("/api/switch", post(api_switch))
         .route("/api/switch/progress", get(api_switch_progress))
         .route("/api/sessions", get(api_sessions))
@@ -801,6 +802,22 @@ async fn api_import(Json(body): Json<Value>) -> Response {
             "skipped": result.skipped,
             "overwritten": result.overwritten,
         })),
+        Err(e) => json_err(e, StatusCode::BAD_REQUEST),
+    }
+}
+
+/// POST /api/import-workdaddy —— 导入 WorkDaddy 加密导出（body `{ fileText, password }`）。
+///
+/// 包体本身就是 JSON（密文在里面是 base64），所以和「导入备份」一样走文本通道，
+/// 不为它单开一条二进制通道。
+async fn api_import_workdaddy(Json(body): Json<Value>) -> Response {
+    let text = body.get("fileText").and_then(|v| v.as_str()).unwrap_or("");
+    let password = body.get("password").and_then(|v| v.as_str()).unwrap_or("");
+    if text.is_empty() {
+        return json_err("缺少 fileText".to_string(), StatusCode::BAD_REQUEST);
+    }
+    match workdaddy::import_export(text.as_bytes(), password) {
+        Ok(result) => json_ok(json!({ "ok": true, "result": result })),
         Err(e) => json_err(e, StatusCode::BAD_REQUEST),
     }
 }

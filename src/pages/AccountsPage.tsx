@@ -7,6 +7,7 @@ import {
   FileDown,
   FileUp,
   Loader2,
+  PackageOpen,
   QrCode,
   RefreshCw,
   Rows3,
@@ -44,6 +45,7 @@ import {
 } from "@/components/ui/dialog";
 import { ExportAccountsDialog } from "@/components/export-accounts-dialog";
 import { ImportAccountsDialog } from "@/components/import-accounts-dialog";
+import { ImportWorkDaddyDialog } from "@/components/import-workdaddy-dialog";
 import { OAuthLoginDialog } from "@/components/oauth-login-dialog";
 import { SwitchAccountDialog } from "@/components/switch-account-dialog";
 import { VscodeSwitchAccountDialog } from "@/components/vscode-switch-account-dialog";
@@ -187,6 +189,7 @@ export default function AccountsPage() {
   const [oauthOpen, setOauthOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
+  const [workdaddyOpen, setWorkdaddyOpen] = useState(false);
   const [switchAccount, setSwitchAccount] = useState<AccountMeta | null>(null);
   /** 「账号信息」弹框目标账号（查看信息 / 编辑备注 / 选择显示字段）。 */
   const [infoTarget, setInfoTarget] = useState<AccountMeta | null>(null);
@@ -614,6 +617,40 @@ export default function AccountsPage() {
     toast.success("导入成功", { description: text });
   }
 
+  /** WorkDaddy 导入完成提示：新收 / 跳过 / 逐条失败原因。 */
+  function onWorkDaddyImported(result: api.WorkDaddyImportResult) {
+    void fetchAll();
+    if (result.imported === 0 && result.failed.length === 0) {
+      toast.info("没有需要导入的账号", {
+        description:
+          result.skipped > 0 ? `${result.skipped} 个账号已在账号库里。` : "包里没有账号。",
+      });
+      return;
+    }
+    const parts = [`新收 ${result.imported} 个`];
+    if (result.skipped > 0) parts.push(`跳过 ${result.skipped} 个（已在库里）`);
+    if (result.failed.length > 0) parts.push(`失败 ${result.failed.length} 个`);
+    const description = result.failed.slice(0, 3).join("；");
+    const detail = result.failed.length > 3 ? `${description} 等` : description;
+    const message = parts.join("，") + "。";
+    if (result.imported === 0) {
+      toast.error("没有导入成功", { description: detail || message, duration: 12_000 });
+    } else if (result.failed.length > 0) {
+      toast.warning("导入完成（部分条目失败）", {
+        description: detail ? `${message}${detail}` : message,
+        duration: 12_000,
+      });
+    } else {
+      toast.success("导入成功", { description: message });
+    }
+    if (result.innerLayer) {
+      toast.warning("包内含 WorkBuddy 加密信封账号", {
+        description: "这些账号的凭据是加密信封，本功能暂不支持，已跳过。",
+        duration: 12_000,
+      });
+    }
+  }
+
   async function onDelete(a: AccountMeta) {
     // 桌面 App（Tauri WebView）不支持 window.confirm，改用 Dialog 确认
     setDeleteTarget(a);
@@ -978,6 +1015,11 @@ export default function AccountsPage() {
               </Button>
             </DemoAction>
             <DemoAction>
+              <Button variant="ghost" size="sm" className="h-9 px-2.5" onClick={() => setWorkdaddyOpen(true)} title="从 WorkDaddy 的加密导出文件导入账号">
+                <PackageOpen />从 WorkDaddy 导入
+              </Button>
+            </DemoAction>
+            <DemoAction>
               <Button variant="ghost" size="sm" className="h-9 px-2.5" onClick={() => setExportOpen(true)} disabled={visibleAccounts.length === 0} title="导出账号备份">
                 <FileDown />导出
               </Button>
@@ -1176,6 +1218,11 @@ export default function AccountsPage() {
         onOpenChange={setImportOpen}
         onImported={onImported}
         variant={variant}
+      />
+      <ImportWorkDaddyDialog
+        open={workdaddyOpen}
+        onOpenChange={setWorkdaddyOpen}
+        onImported={onWorkDaddyImported}
       />
       <SwitchAccountDialog
         open={switchAccount !== null}

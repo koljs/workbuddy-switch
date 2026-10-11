@@ -142,6 +142,7 @@ const ROUTES: Record<string, Route> = {
   export_accounts_to_path: { method: "POST", path: "/api/export-accounts-to-path" },
   preview_import_accounts: { method: "POST", path: "/api/import/preview" },
   import_accounts: { method: "POST", path: "/api/import" },
+  import_workdaddy_export: { method: "POST", path: "/api/import-workdaddy" },
   switch_account: { method: "POST", path: "/api/switch" },
   list_sessions: { method: "GET", path: "/api/sessions" },
   list_account_sessions: { method: "GET", path: "/api/sessions/account" },
@@ -557,6 +558,33 @@ export function previewImportAccounts(
 
 export function importAccounts(fileText: string, indexes: number[]): Promise<ImportResult> {
   return call("import_accounts", { fileText, indexes });
+}
+
+/** WorkDaddy 加密导出的导入结果。 */
+export interface WorkDaddyImportResult {
+  /** 新收进来的账号数。 */
+  imported: number;
+  /** uid 已在账号库里、被跳过的数量（不动已有记录）。 */
+  skipped: number;
+  /** 逐条的错误文案，不中断整包。 */
+  failed: string[];
+  /** 包里的条目总数。 */
+  total: number;
+  /** 包里存在 WorkBuddy 5.6 加密信封——这种情况本功能不支持。 */
+  innerLayer: boolean;
+  accounts: AccountMeta[];
+}
+
+/**
+ * 导入 WorkDaddy 的加密导出（对方「导出」出来的那个 JSON，需要用户设的密码）。
+ *
+ * 解密在本机完成，密码不出本机。
+ */
+export function importWorkDaddyExport(
+  fileText: string,
+  password: string,
+): Promise<{ result: WorkDaddyImportResult }> {
+  return call("import_workdaddy_export", { fileText, password });
 }
 
 export function switchAccount(args: {

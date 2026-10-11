@@ -318,6 +318,7 @@ pub fn run() {
             commands::get_auto_save_config,
             commands::set_auto_save_config,
             commands::run_auto_save_now,
+            commands::import_workdaddy_export,
             commands::log_error,
             commands::get_error_log_path,
             commands::reveal_error_log,

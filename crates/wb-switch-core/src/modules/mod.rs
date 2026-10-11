@@ -43,3 +43,4 @@ pub mod vscode_ext;
 pub mod vscode_session;
 pub mod vscode_session_link;
 pub mod vscode_session_sync;
+pub mod workdaddy;

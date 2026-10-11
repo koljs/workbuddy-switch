@@ -25,6 +25,9 @@ pbkdf2 = "0.12"
 sha1 = "0.10"
 aes-gcm = "0.10"
 base64 = "0.22"
+# WorkDaddy 加密导出：v3 的明文是 gzip 压缩的。flate2 本来就在依赖图里
+# （由别处传递引入），这里只是把它提成直接依赖，不新增下载。
+flate2 = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.58", features = ["Win32_Foundation", "Win32_Security_Cryptography"] }

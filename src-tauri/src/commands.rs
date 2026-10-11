@@ -13,7 +13,7 @@ use wb_switch_core::modules::{
     export_import, gateway, jetbrains, limits, notifications, oauth, process, proxy,
     rate_limit_events, rate_limit_hook, refresh, risk, rotate, session, session_groups, share,
     switch, token_stats, travel, update, variant::WbVariant, vscode_ext, vscode_session,
-    vscode_session_sync,
+    vscode_session_sync, workdaddy,
 };
 
 #[derive(Serialize)]
@@ -493,6 +493,15 @@ pub fn set_auto_save_config(enabled: bool) -> Result<Value, String> {
 #[tauri::command]
 pub fn run_auto_save_now() -> Value {
     json!({ "ok": true, "result": auto_save::scan_once() })
+}
+
+/// POST /api/import-workdaddy —— 导入 WorkDaddy 加密导出。
+///
+/// 包体是 JSON（密文在里面是 base64），前端读出文本传进来即可。
+#[tauri::command]
+pub fn import_workdaddy_export(file_text: String, password: String) -> Result<Value, String> {
+    workdaddy::import_export(file_text.as_bytes(), &password)
+        .map(|result| json!({ "ok": true, "result": result }))
 }
 
 // ---------------------------------------------------------------------------

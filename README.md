@@ -36,6 +36,7 @@ xattr -rd com.apple.quarantine "/Applications/workbuddy-switch.app"
 | 模块 | 说明 |
 | --- | --- |
 | 账号管理 | OAuth 扫码登录、导入导出账号、删除账号 |
+| 从 WorkDaddy 导入 | 选 WorkDaddy 导出的加密 JSON + 填密码即可把账号搬过来（本机解密，密码不出本机） |
 | 自动保存新号 | 后台每 45 秒检查一次登录态：出现账号库里没有的号就自动收进来（只增不改，已有记录的 token / 备注 / 代理都不动） |
 | 账号切换 | 一键切换 WorkBuddy 登录账号，切换过程实时显示进度 |
 | 会话复制 | 把当前账号勾选的会话复制给目标账号，源账号数据不受影响 |
@@ -101,6 +102,16 @@ OpenAI SDK 填上地址与密钥即可直接用；请求按「最久没用过的
 分享的是账号，不是分享者的网络画像。包内含登录凭证，请勿转发给不信任的人。
 
 详见 [docs/SHARE.md](docs/SHARE.md)。
+
+### 从 WorkDaddy 导入
+
+WorkDaddy 是另一款 WorkBuddy 多账号管理器。账号页 →「从 WorkDaddy 导入」，选它导出的加密
+JSON 并填入当时设的密码，账号就搬过来了，不用一个个重新扫码。
+
+包是 `scrypt` + AES-256-GCM 加密的，**解密在本机完成，密码不出本机**。导入时 uid 已在账号库
+里的会被跳过（不动已有记录），坏条目逐条报错但不会中断整包。
+
+详见 [docs/WORKDADDY.md](docs/WORKDADDY.md)。
 
 ### 会话悬浮窗（Agent Companion）
 
